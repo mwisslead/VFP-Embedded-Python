@@ -2,13 +2,12 @@ DEFINE CLASS PythonObjectImpl AS Custom
    PROTECTED pyobject
    iter = .NULL.
    
-   PROCEDURE INIT(pyobj) &&COMMENT
+   PROCEDURE INIT(pyobj)
       IF pyobj == 0
          ERROR 'invalid input value'
-         RETURN .F.
+         RETURN .NULL.
       ENDIF
       this.pyobject = pyobj
-      Py_IncRef(pyobj)
    ENDPROC
    
    PROCEDURE obj
@@ -16,31 +15,28 @@ DEFINE CLASS PythonObjectImpl AS Custom
    ENDPROC
 
    PROCEDURE GETVAL
-      LOCAL retval, pyval
-      pyval = this.pyobject
-      retval = NULL
-      IF pyval > 0
+      LOCAL retval, typestr
+      IF this.pyobject > 0
+         typestr = this.type()
          DO CASE
-            CASE this.type() == "<type 'float'>"
-               retval = PyFloat_AsDouble(pyval)
-            CASE this.type() == "<type 'int'>"
-               retval = PyInt_AsLong(pyval)
-            CASE this.type() == "<type 'bool'>"
-               retval = PyInt_AsLong(pyval) > 0
-            CASE this.type() == "<type 'str'>"
-               retval = PyString_AsString(pyval)
-            CASE this.type() == "<type 'unicode'>"
-               retval = PyString_AsString(pyval)
-            CASE this.type() == "<type 'dict'>"
-               retval = this
-            CASE this.type() == "<type 'list'>"
-               retval = this
-            CASE this.type() == "<type 'datetime.date'>"
+            CASE typestr == "<type 'bool'>"
+               retval = PyInt_AsLong(this.pyobject) > 0
+            CASE typestr == "<type 'int'>"
+               retval = PyInt_AsLong(this.pyobject)
+            CASE typestr == "<type 'float'>"
+               retval = PyFloat_AsDouble(this.pyobject)
+            CASE typestr == "<type 'str'>"
+               retval = PyString_AsString(this.pyobject)
+            CASE typestr == "<type 'unicode'>"
+               retval = PyString_AsString(this.pyobject)
+            CASE typestr == "<type 'datetime.date'>"
                retval = DATE(this.getattr('year'), this.getattr('month'), this.getattr('day'))
-            CASE this.type() == "<type 'datetime.datetime'>"
+            CASE typestr == "<type 'datetime.datetime'>"
+               year_val = this.getattr('year')
+               month_val = this.getattr('month')
                retval = DATETIME(this.getattr('year'), this.getattr('month'), this.getattr('day'),;
                                  this.getattr('hour'), this.getattr('minute'), this.getattr('second'))
-            CASE this.type() == "<type 'NoneType'>"
+            CASE typestr == "<type 'NoneType'>"
                retval = .NULL.
             OTHERWISE
                retval = this
@@ -50,37 +46,57 @@ DEFINE CLASS PythonObjectImpl AS Custom
    ENDPROC
   
    PROCEDURE GetItemRetObj(ind)
+      LOCAL pyind, retval
       pyind = CREATEOBJECT('PythonObject', ind)
-      retval = CREATEOBJECT('PythonObjectImpl', PyObject_GetItem(this.pyobject, pyind.obj()))
-      Py_DecRef(retval.obj())
+      retval = PyObject_GetItem(this.pyobject, pyind.obj())
+      IF retval == 0
+         ERROR py_error()
+         RETURN .NULL.
+      ENDIF
+      retval = CREATEOBJECT('PythonObjectImpl', retval)
       RETURN retval
    ENDPROC
   
    PROCEDURE GetItem(ind)
+      LOCAL retval
       retval = this.GetItemRetObj(ind)
+      IF ISNULL(retval)
+         RETURN retval
+      ENDIF
       RETURN retval.getval()
    ENDPROC
   
    PROCEDURE SetItem(ind, foxval)
+      LOCAL pyind, pyval
       pyind = CREATEOBJECT('PythonObject', ind)
       pyval = CREATEOBJECT('PythonObject', foxval)
       RETURN PyObject_SetItem(this.pyobject, pyind.obj(), pyval.obj()) != -1
    ENDPROC
    
    PROCEDURE DelItem(ind)
+      LOCAL pyind
       pyind = CREATEOBJECT('PythonObject', ind)
       RETURN PyObject_DelItem(this.pyobject, pyind.obj()) != -1
    ENDPROC
 
    FUNCTION GetAttrRetObj(attrname)
-      retval = CREATEOBJECT('PythonObjectImpl', PyObject_GetAttrString(this.pyobject, attrname))
-      Py_DecRef(retval.obj())
-      RETURN retval
+      LOCAL attrobj, retval
+      attrobj = PyObject_GetAttrString(this.pyobject, attrname)
+      IF attrobj == 0
+          ERROR('object does not contain attribute: ' + attrname)
+          RETURN .NULL.
+      ENDIF
+      RETURN CREATEOBJECT('PythonObjectImpl', attrobj)
    ENDFUNC
    
    PROCEDURE GetAttr(attrname)
+      LOCAL retval
       retval = this.GetAttrRetObj(attrname)
-      RETURN retval.getval()
+      IF TYPE('retval') != 'O'
+          RETURN .NULL.
+      ENDIF
+      retval = retval.getval()
+      RETURN retval
    ENDPROC
   
    PROCEDURE SetAttr(attrname, foxval)
@@ -95,7 +111,6 @@ DEFINE CLASS PythonObjectImpl AS Custom
       DO WHILE nextitem != 0
          pyitem = CREATEOBJECT('PythonObjectImpl', nextitem)
          retval.add(pyitem.getval())
-         Py_DecRef(nextitem)
          nextitem = PyIter_Next(pyiter)
       ENDDO
       Py_DecRef(pyiter)
@@ -111,13 +126,13 @@ DEFINE CLASS PythonObjectImpl AS Custom
    ENDPROC
    
    FUNCTION Type()
+      LOCAL pyobjtype
       pyobjtype = CREATEOBJECT('PythonObjectImpl', PyObject_Type(this.pyobject))
-      Py_DecRef(pyobjtype.obj())
       return pyobjtype.repr()
    ENDFUNC
 
    PROCEDURE CallRetObj(argtuple)
-
+      LOCAL pyobj, pyval
       IF PyCallable_Check(this.pyobject) == 0
          ERROR 'Object not callable'
          RETURN .F.
@@ -135,23 +150,34 @@ DEFINE CLASS PythonObjectImpl AS Custom
          RETURN .F.
       ENDIF
 
-      pyval = CREATEOBJECT('PythonObjectImpl', pyobj)
-      Py_DecRef(pyobj)
-      RETURN pyval
+      RETURN CREATEOBJECT('PythonObjectImpl', pyobj)
    ENDPROC
    
    PROCEDURE Call(argtuple)
+      LOCAL pyval
       pyval = this.CallRetObj(argtuple)
-      RETURN pyval.getval()
+      IF VARTYPE(pyval) == 'O'
+         RETURN pyval.getval()
+      ELSE
+         RETURN .NULL.
+      ENDIF
    ENDPROC
    
    PROCEDURE CallMethodRetObj(obj_method, argtuple)
+      LOCAL funcobj
       funcobj = this.GetAttr(obj_method)
+      IF VARTYPE(funcobj) != 'O'
+          RETURN .F.
+      ENDIF
       RETURN funcobj.CallRetObj(argtuple)
    ENDPROC
    
    PROCEDURE CallMethod(obj_method, argtuple)
+      LOCAL funcobj
       funcobj = this.GetAttr(obj_method)
+      IF VARTYPE(funcobj) != 'O'
+          RETURN .F.
+      ENDIF
       RETURN funcobj.call(argtuple)
    ENDPROC
     
@@ -170,23 +196,30 @@ DEFINE CLASS PythonDictionary AS PythonObjectImpl
 ENDDEFINE
 
 DEFINE CLASS PythonList AS PythonObjectImpl
-   FUNCTION init(foxarray)
+   FUNCTION INIT(foxarray)
       this.pyobject = PyList_New(0)
-      IF TYPE('foxarray', 1) == 'A'
-         FOR EACH element IN foxarray
-            elemTuple = CREATEOBJECT('PythonTuple', element)
-            this.CallMethod('append', elemTuple)
-         ENDFOR
-      ELSE
-         ERROR 'input must be an array'
+      IF PARAMETERS() > 0
+         IF TYPE('foxarray', 1) == 'A'
+            LOCAL element, elemTuple
+            FOR EACH element IN foxarray
+               elemTuple = CREATEOBJECT('PythonTuple', element)
+               this.CallMethod('append', elemTuple)
+            ENDFOR
+         ELSE
+            ERROR 'input must be an array'
+            RETURN .F.
+         ENDIF
       ENDIF
    ENDFUNC
 ENDDEFINE
 
 DEFINE CLASS PythonModule AS PythonObjectImpl
    FUNCTION INIT(modulename)
-      modname = CREATEOBJECT('PythonObject', modulename)
-      this.pyobject = PyImport_Import(modname.obj())
+      this.pyobject = PyImport_ImportModule(modulename)
+      IF this.pyobject == 0
+         ERROR('Could not import module: ' + modulename)
+         RETURN .F.
+      ENDIF
    ENDFUNC
 ENDDEFINE
 
@@ -212,17 +245,21 @@ DEFINE CLASS PythonObject AS PythonObjectImpl
             ENDIF
             pyobject = foxval.obj()
             Py_IncRef(pyobject)
-         CASE valtype == 'T'
-            DatetimeTuple = CREATEOBJECT('PythonTuple', YEAR(foxval), MONTH(foxval), DAY(foxval), HOUR(foxval), MINUTE(foxval), SEC(foxval))
-            pyobject = PyDatetime.CallMethodRetObj('datetime', DatetimeTuple)
-            pyobject = pyobject.obj()
-         CASE valtype == 'D'
-            DateTuple = CREATEOBJECT('PythonTuple', YEAR(foxval), MONTH(foxval), DAY(foxval))
-            pyobject = PyDatetime.CallMethodRetObj('date', DateTuple)
+         CASE valtype == 'T' OR valtype == 'D'
+            LOCAL DateTuple, DateMethod
+            IF valtype == 'T'
+               DateTuple = CREATEOBJECT('PythonTuple', YEAR(foxval), MONTH(foxval), DAY(foxval), HOUR(foxval), MINUTE(foxval), SEC(foxval))
+               DateMethod = 'datetime'
+            ELSE
+               DateTuple = CREATEOBJECT('PythonTuple', YEAR(foxval), MONTH(foxval), DAY(foxval))
+               DateMethod = 'date'
+            ENDIF
+            pyobject = PyDatetime.CallMethodRetObj(DateMethod, DateTuple)
+            Py_IncRef(pyobject.obj())
             pyobject = pyobject.obj()
          CASE valtype == 'X'
-            pyobject = PyNone
-            pyobject = pyobject.obj()
+            pyobject = PyNone.obj()
+            Py_IncRef(pyobject)
          OTHERWISE
             ERROR 'Unknown Variable Type/Cannot create pythonObject'
             RETURN
@@ -235,23 +272,20 @@ DEFINE CLASS PythonTuple AS PythonObjectImpl
    FUNCTION INIT
       LPARAMETERS arg1,arg2,arg3,arg4,arg5, arg6,arg7,arg8,arg9
       
-      LOCAL numparams, retval
+      LOCAL numparams, argnum
       
-      numparams = PARAMETERS()
+      numparams = MIN(PARAMETERS(), 9)
       
-      IF numparams > 9
-         numparams = 9
-      ENDIF
-      
-      args = PyTuple_New(numparams)
-      FOR n = 1 to numparams
-         argpyval = EVALUATE("CREATEOBJECT('PythonObject', arg" + STR(n,1) + ')')
-         Py_IncRef(argpyval.obj())
-         PyTuple_SetItem(args, n-1, argpyval.obj())
-         RELEASE argpyval
+      this.pyobject = PyTuple_New(numparams)
+      FOR argnum = 1 to numparams
+         LOCAL pyval
+         pyval = CREATEOBJECT('PythonObject', EVALUATE('arg' + STR(argnum,1)))
+         Py_IncRef(pyval.obj())
+         IF PyTuple_SetItem(this.pyobject, argnum-1, pyval.obj()) != 0
+            RETURN .F.
+         ENDIF
+         RELEASE pyval
       ENDFOR
-      
-      this.pyobject = args
    ENDFUNC
 ENDDEFINE
 
@@ -275,70 +309,71 @@ ENDDEFINE
 FUNCTION PythonFunctionCall(modulename, funcname, argtuple)
    LOCAL pymod
    pymod = CREATEOBJECT('PythonModule', modulename)
-   RETURN pymod.CallMethod(funcname, argtuple)
+   IF VARTYPE(pymod) == 'O'
+      RETURN pymod.CallMethod(funcname, argtuple)
+   ELSE
+      RETURN .NULL.
+   ENDIF
 ENDFUNC
 
 FUNCTION py_error
+   LOCAL err, pytype, pyvalue, pytraceback, errlist, pynewline
    err = PyErr_Occurred()
     
    IF err == 0
       RETURN ''
    ENDIF
 
-   ptype = 0
-   pvalue = 0
-   ptraceback = 0
+   pytype = 0
+   pyvalue = 0
+   pytraceback = 0
 
-   PyErr_Fetch(@ptype, @pvalue, @ptraceback)
-    
-   pytype = CREATEOBJECT('PythonObjectImpl', ptype)
-   pyvalue = CREATEOBJECT('PythonObjectImpl', pvalue)
-   pytraceback = CREATEOBJECT('PythonObjectImpl', ptraceback)
-   Py_DecRef(pvalue)
+   PyErr_Fetch(@pytype, @pyvalue, @pytraceback)
+   
+   IF pytype != 0
+      pytype = CREATEOBJECT('PythonObjectImpl', pytype)
+      Py_IncRef(pytype.obj())
+   ELSE
+      pytype = PyNone
+   ENDIF
+   IF pyvalue != 0
+      pyvalue = CREATEOBJECT('PythonObjectImpl', pyvalue)
+   ELSE
+      pyvalue = PyNone
+   ENDIF
+   IF pytraceback != 0
+      pytraceback = CREATEOBJECT('PythonObjectImpl', pytraceback)
+      Py_IncRef(pytraceback.obj())
+   ELSE
+      pytraceback = PyNone
+   ENDIF
    
    errlist = PythonFunctionCall('traceback', "format_exception", CREATEOBJECT('PythonTuple', pytype, pyvalue, pytraceback))
-   pynewline = PyString_FromString(CHR(10))
-   ret = _PyString_Join(pynewline, errlist.obj())
-   Py_DECREF(pynewline)
-   
-   pyval = CREATEOBJECT('PythonObjectImpl', ret)
-    
-   RETURN pyval.getval()
-
+   pynewline = CREATEOBJECT('PythonObject', CHR(10))
+   return pynewline.callmethod('join', CREATEOBJECT('pythontuple', errlist))
 ENDFUNC
 
 
 PROCEDURE start_python
    DECLARE Py_SetPythonHome IN Python27\python27.dll string
-   DECLARE string Py_GetPythonHome IN Python27\python27.dll
-   DECLARE string Py_GetPath IN Python27\python27.dll
-   DECLARE integer Py_Initialize IN Python27\python27.dll
+   DECLARE Py_Initialize IN Python27\python27.dll
    DECLARE integer Py_IsInitialized IN Python27\python27.dll
-   DECLARE integer Py_Finalize IN Python27\python27.dll
+   DECLARE Py_Finalize IN Python27\python27.dll
    DECLARE Py_IncRef IN Python27\python27.dll integer
    DECLARE Py_DecRef IN Python27\python27.dll integer
    DECLARE integer PyErr_Occurred IN Python27\python27.dll
    DECLARE  PyErr_Fetch IN Python27\python27.dll integer @, integer @, integer @
-   DECLARE integer PyImport_AddModule IN Python27\python27.dll string
-   DECLARE integer PyImport_Import IN Python27\python27.dll integer
-   DECLARE integer PySys_GetObject IN Python27\python27.dll string
-   DECLARE integer PyRun_SimpleString IN Python27\python27.dll string
+   DECLARE integer PyImport_ImportModule IN Python27\python27.dll string
    DECLARE string PyString_AsString IN Python27\python27.dll integer
    DECLARE integer PyString_FromString IN Python27\python27.dll string
-   DECLARE integer _PyString_Join IN Python27\python27.dll integer, integer
-   DECLARE integer PyUnicode_FromString IN Python27\python27.dll string
-   DECLARE integer _PyUnicode_Join IN Python27\python27.dll integer, integer
    DECLARE long PyInt_AsLong IN Python27\python27.dll integer
    DECLARE integer PyInt_FromLong IN Python27\python27.dll long
+   DECLARE integer PyBool_FromLong IN Python27\python27.dll long
    DECLARE double PyFloat_AsDouble IN Python27\python27.dll integer
    DECLARE integer PyFloat_FromDouble IN Python27\python27.dll double
-   DECLARE integer PyBool_FromLong IN Python27\python27.dll long
-   DECLARE integer PyObject_Length IN Python27\python27.dll integer
-   DECLARE integer PyObject_Str IN Python27\python27.dll integer
    DECLARE integer PyObject_Repr IN Python27\python27.dll integer
    DECLARE integer PyObject_GetAttrString IN Python27\python27.dll integer, string
    DECLARE integer PyObject_SetAttrString IN Python27\python27.dll integer, string, integer
-   DECLARE integer PyObject_IsInstance IN Python27\python27.dll integer, integer
    DECLARE integer PyObject_Type IN Python27\python27.dll integer
    DECLARE integer PyObject_Call IN Python27\python27.dll integer, integer, integer
    DECLARE integer PyObject_CallObject IN Python27\python27.dll integer, integer
@@ -348,32 +383,25 @@ PROCEDURE start_python
    DECLARE integer PyObject_GetIter IN Python27\python27.dll integer
    DECLARE integer PyIter_Next IN Python27\python27.dll integer
    DECLARE integer PyCallable_Check IN Python27\python27.dll integer
-   DECLARE integer PyEval_GetLocals IN Python27\python27.dll
-   DECLARE integer PyEval_GetGlobals IN Python27\python27.dll
    DECLARE integer PyDict_New IN Python27\python27.dll
-   DECLARE integer PyDict_GetItem IN Python27\python27.dll integer, integer
-   DECLARE integer PyDict_SetItem IN Python27\python27.dll integer, integer, integer
-   DECLARE integer PyDict_Keys IN Python27\python27.dll integer
    DECLARE integer PyList_New IN Python27\python27.dll integer
-   DECLARE integer PyList_Append IN Python27\python27.dll integer, integer
-   DECLARE integer PyList_Size IN Python27\python27.dll integer
-   DECLARE integer PyList_GetItem IN Python27\python27.dll integer, integer
    DECLARE integer PyTuple_New IN Python27\python27.dll integer
    DECLARE integer PyTuple_SetItem IN Python27\python27.dll integer, integer, integer
 
    Py_SetPythonHome('Python27')
    Py_Initialize()
    PUBLIC PyBuiltins, PyNone, PyDatetime
-   PyBuiltins = CREATEOBJECT('PythonVariable', '__builtins__')
+   PyBuiltins = CREATEOBJECT('PythonModule', '__builtin__')
    PyNone = PyBuiltins.GetAttrRetObj('None')
    PyDatetime = CREATEOBJECT('PythonModule', 'datetime')
-   sysPath = PySys_GetObject('path')
-   programName = CREATEOBJECT('PythonObject', CURDIR())
-   PyList_Append(sysPath, programName.obj())
-   RELEASE programName
+   PySys = CREATEOBJECT('PythonModule', 'sys')
+   PySysPath = PySys.getAttrRetObj('path')
+   PySysPath.CallMethod('append', CREATEOBJECT('PythonTuple', CURDIR()))
+   RELEASE PySysPath, PySys
 ENDPROC
 
 PROCEDURE stop_python
-   RELEASE PyBuiltins, PyNone, PyDatetime
    Py_Finalize()
+   RELEASE PyDatetime, PyNone, PyBuiltins
+   &&CLEAR DLLS PyInitialize, PyFinalize, Py_SetPythonHome, Py_IsInitialized, Py_IncRef, Py_DecRef
 ENDPROC

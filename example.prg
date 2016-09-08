@@ -1,57 +1,43 @@
-SET PROCEDURE TO python
+SET PROCEDURE TO python ADDITIVE
 
-DO start_python IN python
+start_python()
 
-dict = CREATEOBJECT('PythonDictionary')
+retval = PythonFunctionCall('example_script', 'swap_args', CREATEOBJECT('PythonTuple', 'arg1', 2))
+?retval.repr()
+r1 = retval.getitem(0)
+r2 = retval.getitem(1)
+?r1, r2
+RELEASE r1, r2, retval
 
-dict.SetItem('num', 15.3)
-dict.SetItem('bool', .T.)
-dict.SetItem('None', .NULL.)
-dict.SetItem('string', 'Words and stuff')
-dict.SetItem('date', DATE())
-dict.SetItem('datetime', DATETIME())
-?dict.repr()
-dict.DelItem('None')
-?dict.repr()
+example_dict = CREATEOBJECT('PythonDictionary')
+example_dict.setItem('key1', .NULL.)
+example_dict.setItem('key2', .T.)
+example_dict.setItem('key3', 3.5)
+example_dict.setItem('key4', DATE())
+?example_dict.repr()
+?example_dict.getitem('key4')
+RELEASE example_dict
 
-FOR EACH dict_key IN dict.iter
-   ?dict.GetItem(dict_key)
-ENDFOR
+example_list = CREATEOBJECT('PythonList')
+example_list.callMethod('append', CREATEOBJECT('PythonTuple', .NULL.))
+example_list.callMethod('append', CREATEOBJECT('PythonTuple', .T.))
+example_list.callMethod('append', CREATEOBJECT('PythonTuple', 3.5))
+example_list.callMethod('append', CREATEOBJECT('PythonTuple', DATETIME()))
+?example_list.repr()
+?example_list.getitem(3)
+example_list.setitem(2, 3.6)
+?example_list.repr()
+?example_list.getitem(2)
+RELEASE example_list
 
-DIMENSION testarray(3)
-testarray(1) = 15.3
-testarray(2) = .T.
-testarray(3) = 'Words and stuff in a list'
+&&generate an error
+example_list = CREATEOBJECT('PythonList')
+?example_list.getitem(0)
+?example_list.setitem(0, 5)
+RELEASE example_list
 
-listofstuff = CREATEOBJECT('PythonList', @testarray)
-RELEASE testarray
+stop_python()
 
-listofstuff.callmethod('append', CREATEOBJECT('PythonTuple', .NULL.))
+RELEASE PROCEDURE python
 
-FOR EACH listofstuff_item IN listofstuff.iter
-   ? 'array item', listofstuff_item
-ENDFOR
-
-DIMENSION testarray(5)
-listofstuff = CREATEOBJECT('PythonList', @testarray)
-RELEASE testarray
-
-?listofstuff.repr()
-listofstuff.SetItem(1, 15.3)
-listofstuff.SetItem(2, .T.)
-listofstuff.SetItem(3, .NULL.)
-listofstuff.SetItem(4, 'Words and stuff')
-listofstuff.SetItem(5, DATE())
-listofstuff.SetItem(6, DATETIME())
-?listofstuff.repr()
-listofstuff.DelItem(3)
-?listofstuff.repr()
-
-FOR EACH listofstuff_item IN listofstuff.iter
-   ? 'array item', listofstuff_item
-ENDFOR
-
-?PyNone.Repr()
-?PyBuiltins.Repr()
-
-DO stop_python IN python2
+RETURN
