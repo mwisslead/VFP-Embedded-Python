@@ -217,7 +217,7 @@ DEFINE CLASS PythonModule AS PythonObjectImpl
    FUNCTION INIT(modulename)
       this.pyobject = PyImport_ImportModule(modulename)
       IF this.pyobject == 0
-         ERROR('Could not import module: ' + modulename)
+         ERROR('Could not import module: ' + modulename + CHR(10) + py_error())
          RETURN .F.
       ENDIF
    ENDFUNC
@@ -362,7 +362,7 @@ PROCEDURE start_python
    DECLARE Py_IncRef IN Python27\python27.dll integer
    DECLARE Py_DecRef IN Python27\python27.dll integer
    DECLARE integer PyErr_Occurred IN Python27\python27.dll
-   DECLARE  PyErr_Fetch IN Python27\python27.dll integer @, integer @, integer @
+   DECLARE PyErr_Fetch IN Python27\python27.dll integer @, integer @, integer @
    DECLARE integer PyImport_ImportModule IN Python27\python27.dll string
    DECLARE string PyString_AsString IN Python27\python27.dll integer
    DECLARE integer PyString_FromString IN Python27\python27.dll string
@@ -390,18 +390,23 @@ PROCEDURE start_python
 
    Py_SetPythonHome('Python27')
    Py_Initialize()
-   PUBLIC PyBuiltins, PyNone, PyDatetime
+   PUBLIC PyBuiltins, PyNone, PyDatetime, PyStderr, PyStdout
    PyBuiltins = CREATEOBJECT('PythonModule', '__builtin__')
    PyNone = PyBuiltins.GetAttrRetObj('None')
    PyDatetime = CREATEOBJECT('PythonModule', 'datetime')
    PySys = CREATEOBJECT('PythonModule', 'sys')
    PySysPath = PySys.getAttrRetObj('path')
    PySysPath.CallMethod('append', CREATEOBJECT('PythonTuple', CURDIR()))
+   PyStdout = PythonFunctionCall('StringIO', 'StringIO', CREATEOBJECT('PythonTuple'))
+   PySys.setAttr('stdout', PyStdout)
+   PyStderr = PythonFunctionCall('StringIO', 'StringIO', CREATEOBJECT('PythonTuple'))
+   PySys.setAttr('stderr', PyStderr)
+   PySys.setAttr('executable', CURDIR() + 'Python27\pythonw.exe')
    RELEASE PySysPath, PySys
 ENDPROC
 
 PROCEDURE stop_python
    Py_Finalize()
-   RELEASE PyDatetime, PyNone, PyBuiltins
+   RELEASE PyDatetime, PyNone, PyBuiltins, PyStderr, PyStdout
    &&CLEAR DLLS PyInitialize, PyFinalize, Py_SetPythonHome, Py_IsInitialized, Py_IncRef, Py_DecRef
 ENDPROC
