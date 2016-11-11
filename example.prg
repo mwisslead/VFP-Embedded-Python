@@ -2,7 +2,7 @@ SET PROCEDURE TO python ADDITIVE
 
 start_python()
 
-retval = PythonFunctionCall('example_script', 'swap_args', CREATEOBJECT('PythonTuple', 'arg1', 2))
+retval = PythonFunctionCall('example_module', 'swap_args', CREATEOBJECT('PythonTuple', 'arg1', 2))
 ?retval.repr()
 r1 = retval.getitem(0)
 r2 = retval.getitem(1)
