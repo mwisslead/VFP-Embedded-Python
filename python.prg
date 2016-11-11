@@ -309,10 +309,10 @@ ENDDEFINE
 FUNCTION PythonFunctionCall(modulename, funcname, argtuple)
    LOCAL pymod
    pymod = CREATEOBJECT('PythonModule', modulename)
-   IF VARTYPE(pymod) == 'O'
+   IF VARTYPE(pymod) == 'O' AND UPPER(pymod.class) == 'PYTHONTUPLE'
       RETURN pymod.CallMethod(funcname, argtuple)
    ELSE
-      RETURN .NULL.
+      ERROR('argtuple argument must be of type PythonTuple')
    ENDIF
 ENDFUNC
 
