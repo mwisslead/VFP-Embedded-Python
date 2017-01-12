@@ -349,8 +349,7 @@ FUNCTION py_error
    ENDIF
 
    errlist = PythonFunctionCall('traceback', "format_exception", CREATEOBJECT('PythonTuple', pytype, pyvalue, pytraceback))
-   pynewline = CREATEOBJECT('PythonObject', CHR(10))
-   return pynewline.callmethod('join', CREATEOBJECT('pythontuple', errlist))
+   RETURN errlist.getitem(-1)
 ENDFUNC
 
 DEFINE CLASS PyStdoutRedirect AS CUSTOM
