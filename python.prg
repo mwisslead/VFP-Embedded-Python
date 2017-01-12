@@ -25,10 +25,11 @@ DEFINE CLASS PythonObjectImpl AS Custom
                retval = PyInt_AsLong(this.pyobject)
             CASE typestr == "<type 'float'>"
                retval = PyFloat_AsDouble(this.pyobject)
-            CASE typestr == "<type 'str'>"
-               retval = PyString_AsString(this.pyobject)
-            CASE typestr == "<type 'unicode'>"
-               retval = PyString_AsString(this.pyobject)
+            CASE typestr == "<type 'str'>" OR typestr == "<type 'unicode'>"
+               LOCAL string_pointer, string_length
+               string_length = PyString_Size(this.pyobject)
+               string_pointer = PyString_AsString(this.pyobject)
+               retval = SYS(2600, string_pointer, string_length)
             CASE typestr == "<type 'datetime.date'>"
                retval = DATE(this.getattr('year'), this.getattr('month'), this.getattr('day'))
             CASE typestr == "<type 'datetime.datetime'>"
@@ -118,9 +119,11 @@ DEFINE CLASS PythonObjectImpl AS Custom
    ENDPROC
 
    PROCEDURE Repr
-      LOCAL pyrepr, retval
+      LOCAL pyrepr, retval, string_pointer, string_length
       pyrepr = PyObject_Repr(this.pyobject)
-      retval = PyString_AsString(pyrepr)
+      string_length = PyString_Size(pyrepr)
+      string_pointer = PyString_AsString(pyrepr)
+      retval = SYS(2600, string_pointer, string_length)
       Py_DecRef(pyrepr)
       RETURN retval
    ENDPROC
@@ -235,7 +238,7 @@ DEFINE CLASS PythonObject AS PythonObjectImpl
                pyobject = PyFloat_FromDouble(foxval)
             ENDIF
          CASE valtype == 'C'
-            pyobject = PyString_FromString(foxval)
+            pyobject = PyString_FromStringAndSize(foxval, len(foxval))
          CASE valtype == 'L'
             pyobject = PyBool_FromLong(foxval)
          CASE valtype == 'O'
@@ -389,8 +392,9 @@ PROCEDURE start_python
       DECLARE integer PyErr_Occurred IN Python27\python27.dll
       DECLARE PyErr_Fetch IN Python27\python27.dll integer @, integer @, integer @
       DECLARE integer PyImport_ImportModule IN Python27\python27.dll string
-      DECLARE string PyString_AsString IN Python27\python27.dll integer
-      DECLARE integer PyString_FromString IN Python27\python27.dll string
+      DECLARE integer PyString_AsString IN Python27\python27.dll integer
+      DECLARE integer PyString_Size IN Python27\python27.dll integer
+      DECLARE integer PyString_FromStringAndSize IN Python27\python27.dll string, integer
       DECLARE long PyInt_AsLong IN Python27\python27.dll integer
       DECLARE integer PyInt_FromLong IN Python27\python27.dll long
       DECLARE integer PyBool_FromLong IN Python27\python27.dll long
