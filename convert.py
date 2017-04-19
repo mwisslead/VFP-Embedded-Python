@@ -46,14 +46,14 @@ def create_code(mod, original_mod=None):
             funcname = mod_name + '_' + mem[0]
         else:
             funcname = mem[0]
-        args = list(mem[1].func_code.co_varnames)
+        args = list(mem[1].func_code.co_varnames[:mem[1].func_code.co_argcount])
         if len(args) > 9:
             print('Cannot convert function \'{}\' with more than 9 arguments'.format(funcname), file=sys.stderr)
             continue
 
         code.append('FUNCTION {}({})'.format(funcname, ', '.join(args)))
 
-        args.append('\'PythonTuple\'')
+        args.insert(0, '\'PythonTuple\'')
 
         body = 'RETURN PythonFunctionCall(\'{}\', \'{}\', CREATEOBJECT({}))'
         code.append([body.format(mod.__name__, mem[0], ', '.join(args))])
