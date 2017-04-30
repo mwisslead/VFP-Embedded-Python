@@ -386,7 +386,7 @@ PROCEDURE start_python
       DECLARE Py_Initialize IN Python27\python27.dll
       Py_SetPythonHome('Python27')
       Py_Initialize()
-      CLEAR DLLS Py_SetPythonHome, PyInitialize
+      CLEAR DLLS Py_SetPythonHome, Py_Initialize
 
       DECLARE Py_IncRef IN Python27\python27.dll integer
       DECLARE Py_DecRef IN Python27\python27.dll integer
@@ -440,6 +440,6 @@ PROCEDURE stop_python
    IF Py_IsInitialized() != 0
       DECLARE Py_Finalize IN Python27\python27.dll
       Py_Finalize()
-      CLEAR DLLS PyFinalize
+      CLEAR DLLS Py_Finalize
    ENDIF
 ENDPROC
