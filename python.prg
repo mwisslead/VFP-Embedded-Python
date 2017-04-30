@@ -426,9 +426,11 @@ PROCEDURE start_python
       PySysPath = PySys.getAttrRetObj('path')
       PySysPath.CallMethod('append', CREATEOBJECT('PythonTuple', CURDIR()))
       PySys.setAttr('executable', CURDIR() + 'Python27\pythonw.exe')
+      PySysArgv = CREATEOBJECT('PythonList')
+      PySysArgv.callmethod('append', CREATEOBJECT('PythonTuple', ''))
+      PySys.setAttr('argv', PySysArgv)
       PyStdout = CREATEOBJECT('PyStdoutRedirect', 'stdout')
       PyStderr = CREATEOBJECT('PyStdoutRedirect', 'stderr')
-      RELEASE PySysPath
    ENDIF
 ENDPROC
 
