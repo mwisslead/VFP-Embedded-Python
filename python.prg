@@ -134,19 +134,30 @@ DEFINE CLASS PythonObjectImpl AS Custom
       return pyobjtype.repr()
    ENDFUNC
 
-   PROCEDURE CallRetObj(argtuple)
+   PROCEDURE CallRetObj(argtuple, kwarg_dict)
       LOCAL pyobj, pyval
       IF PyCallable_Check(this.pyobject) == 0
          ERROR 'Object not callable'
          RETURN .F.
       ENDIF
 
+      IF PCOUNT() < 1 OR isnull(argtuple) or (vartype(argtuple) == 'L' and argtuple == .F.)
+         argtuple = createobject('PythonTuple')
+      ENDIF
       IF VARTYPE(argtuple) <> 'O' OR argtuple.type() <> "<type 'tuple'>"
          ERROR 'Argument must be Python Tuple'
          RETURN .F.
       ENDIF
 
-      pyobj = PyObject_CallObject(this.pyobject, argtuple.obj())
+      IF PCOUNT() < 2 OR isnull(kwarg_dict) or (vartype(kwarg_dict) == 'L' and kwarg_dict == .F.)
+         pyobj = PyObject_Call(this.pyobject, argtuple.obj(), 0)
+      ELSE
+         IF VARTYPE(kwarg_dict) <> 'O' OR kwarg_dict.type() <> "<type 'dict'>"
+            ERROR 'Argument must be Python Dictionary'
+            RETURN .F.
+         ENDIF
+         pyobj = PyObject_Call(this.pyobject, argtuple.obj(), kwarg_dict.obj())
+      ENDIF
 
       IF pyobj == 0
          ERROR 'Function call failed: ' + py_error()
@@ -156,9 +167,9 @@ DEFINE CLASS PythonObjectImpl AS Custom
       RETURN CREATEOBJECT('PythonObjectImpl', pyobj)
    ENDPROC
 
-   PROCEDURE Call(argtuple)
+   PROCEDURE Call(argtuple, kwarg_dict)
       LOCAL pyval
-      pyval = this.CallRetObj(argtuple)
+      pyval = this.CallRetObj(argtuple, kwarg_dict)
       IF VARTYPE(pyval) == 'O'
          RETURN pyval.getval()
       ELSE
@@ -166,22 +177,22 @@ DEFINE CLASS PythonObjectImpl AS Custom
       ENDIF
    ENDPROC
 
-   PROCEDURE CallMethodRetObj(obj_method, argtuple)
+   PROCEDURE CallMethodRetObj(obj_method, argtuple, kwarg_dict)
       LOCAL funcobj
       funcobj = this.GetAttr(obj_method)
       IF VARTYPE(funcobj) != 'O'
           RETURN .F.
       ENDIF
-      RETURN funcobj.CallRetObj(argtuple)
+      RETURN funcobj.CallRetObj(argtuple, kwarg_dict)
    ENDPROC
 
-   PROCEDURE CallMethod(obj_method, argtuple)
+   PROCEDURE CallMethod(obj_method, argtuple, kwarg_dict)
       LOCAL funcobj
       funcobj = this.GetAttr(obj_method)
       IF VARTYPE(funcobj) != 'O'
           RETURN .F.
       ENDIF
-      RETURN funcobj.call(argtuple)
+      RETURN funcobj.call(argtuple, kwarg_dict)
    ENDPROC
 
    PROCEDURE DESTROY
@@ -206,7 +217,7 @@ DEFINE CLASS PythonList AS PythonObjectImpl
             LOCAL element, elemTuple
             FOR EACH element IN foxarray
                elemTuple = CREATEOBJECT('PythonTuple', element)
-               this.CallMethod('append', elemTuple)
+               this.CallMethod('append', elemTuple, .NULL.)
             ENDFOR
          ELSE
             ERROR 'input must be an array'
@@ -257,7 +268,7 @@ DEFINE CLASS PythonObject AS PythonObjectImpl
                DateTuple = CREATEOBJECT('PythonTuple', YEAR(foxval), MONTH(foxval), DAY(foxval))
                DateMethod = 'date'
             ENDIF
-            pyobject = PyDatetime.CallMethodRetObj(DateMethod, DateTuple)
+            pyobject = PyDatetime.CallMethodRetObj(DateMethod, DateTuple, .NULL.)
             Py_IncRef(pyobject.obj())
             pyobject = pyobject.obj()
          CASE valtype == 'X'
@@ -309,11 +320,11 @@ DEFINE CLASS PythonBuiltin AS PythonObjectImpl
    ENDFUNC
 ENDDEFINE
 
-FUNCTION PythonFunctionCall(modulename, funcname, argtuple)
+FUNCTION PythonFunctionCall(modulename, funcname, argtuple, kwarg_dict)
    LOCAL pymod
    pymod = CREATEOBJECT('PythonModule', modulename)
    IF VARTYPE(pymod) == 'O' AND UPPER(argtuple.class) == 'PYTHONTUPLE'
-      RETURN pymod.CallMethod(funcname, argtuple)
+      RETURN pymod.CallMethod(funcname, argtuple, kwarg_dict)
    ELSE
       ERROR('argtuple argument must be of type PythonTuple')
    ENDIF
@@ -353,7 +364,7 @@ FUNCTION py_error
 
    errlist = PythonFunctionCall('traceback', "format_exception", CREATEOBJECT('PythonTuple', pytype, pyvalue, pytraceback))
    pynewline = CREATEOBJECT('PythonObject', CHR(10))
-   return pynewline.callmethod('join', CREATEOBJECT('pythontuple', errlist.callmethod('__reversed__', CREATEOBJECT('PythonTuple'))))
+   return pynewline.callmethod('join', CREATEOBJECT('pythontuple', errlist.callmethod('__reversed__', CREATEOBJECT('PythonTuple'), .NULL.)), .NULL.)
 ENDFUNC
 
 DEFINE CLASS PyStdoutRedirect AS CUSTOM
@@ -372,7 +383,7 @@ DEFINE CLASS PyStdoutRedirect AS CUSTOM
 
    FUNCTION read
       LOCAL retval
-      retval = this.io.callmethod('getvalue', CREATEOBJECT('PythonTuple'))
+      retval = this.io.callmethod('getvalue', CREATEOBJECT('PythonTuple'), .NULL.)
       this.reset_io()
       RETURN retval
    ENDFUNC
@@ -406,7 +417,6 @@ PROCEDURE start_python
       DECLARE integer PyObject_SetAttrString IN Python27\python27.dll integer, string, integer
       DECLARE integer PyObject_Type IN Python27\python27.dll integer
       DECLARE integer PyObject_Call IN Python27\python27.dll integer, integer, integer
-      DECLARE integer PyObject_CallObject IN Python27\python27.dll integer, integer
       DECLARE integer PyObject_GetItem IN Python27\python27.dll integer, integer
       DECLARE integer PyObject_SetItem IN Python27\python27.dll integer, integer, integer
       DECLARE integer PyObject_DelItem IN Python27\python27.dll integer, integer
@@ -424,10 +434,10 @@ PROCEDURE start_python
       PyDatetime = CREATEOBJECT('PythonModule', 'datetime')
       PySys = CREATEOBJECT('PythonModule', 'sys')
       PySysPath = PySys.getAttrRetObj('path')
-      PySysPath.CallMethod('append', CREATEOBJECT('PythonTuple', CURDIR()))
+      PySysPath.CallMethod('append', CREATEOBJECT('PythonTuple', CURDIR()), .NULL.)
       PySys.setAttr('executable', CURDIR() + 'Python27\pythonw.exe')
       PySysArgv = CREATEOBJECT('PythonList')
-      PySysArgv.callmethod('append', CREATEOBJECT('PythonTuple', ''))
+      PySysArgv.callmethod('append', CREATEOBJECT('PythonTuple', ''), .NULL.)
       PySys.setAttr('argv', PySysArgv)
       PyStdout = CREATEOBJECT('PyStdoutRedirect', 'stdout')
       PyStderr = CREATEOBJECT('PyStdoutRedirect', 'stderr')
