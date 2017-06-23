@@ -2,12 +2,26 @@ SET PROCEDURE TO python ADDITIVE
 
 start_python()
 
-retval = PythonFunctionCall('example_module', 'swap_args', CREATEOBJECT('PythonTuple', 'arg1', 2))
+args = CREATEOBJECT('PythonTuple', 'arg1', 2)
+?args.repr()
+retval = PythonFunctionCall('example_module', 'swap_args', args)
 ?retval.repr()
 r1 = retval.getitem(0)
 r2 = retval.getitem(1)
 ?r1, r2
 RELEASE r1, r2, retval
+
+args = CREATEOBJECT('PythonTuple', 'arg1')
+kwargs = CREATEOBJECT('PythonDictionary')
+kwargs.setItem('arg2', 2)
+?args.repr()
+?kwargs.repr()
+retval = PythonFunctionCall('example_module', 'swap_args', args, kwargs)
+?retval.repr()
+r1 = retval.getitem(0)
+r2 = retval.getitem(1)
+?r1, r2
+RELEASE kwargs, r1, r2, retval
 
 example_dict = CREATEOBJECT('PythonDictionary')
 example_dict.setItem('key1', .NULL.)
