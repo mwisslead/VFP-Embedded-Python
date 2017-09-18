@@ -160,7 +160,7 @@ DEFINE CLASS PythonObjectImpl AS Custom
       ENDIF
 
       IF pyobj == 0
-         ERROR 'Function call failed: ' + py_error()
+         ERROR py_error()
          RETURN .F.
       ENDIF
 
@@ -204,8 +204,13 @@ DEFINE CLASS PythonObjectImpl AS Custom
 ENDDEFINE
 
 DEFINE CLASS PythonDictionary AS PythonObjectImpl
-   FUNCTION INIT
+   FUNCTION INIT(TUPLE_OF_2_PLES)
       this.pyobject = PyDict_New()
+      IF VARTYPE(TUPLE_OF_2_PLES) == 'O'
+         FOR EACH tuple IN tuple_of_2_ples.iter
+            this.setitem(tuple.getitem(0), tuple.getitem(1))
+         ENDFOR
+      ENDIF
    ENDFUNC
 ENDDEFINE
 
@@ -231,7 +236,7 @@ DEFINE CLASS PythonModule AS PythonObjectImpl
    FUNCTION INIT(modulename)
       this.pyobject = PyImport_ImportModule(modulename)
       IF this.pyobject == 0
-         ERROR('Could not import module: ' + modulename + CHR(10) + py_error())
+         ERROR py_error()
          RETURN .F.
       ENDIF
    ENDFUNC
@@ -321,8 +326,17 @@ DEFINE CLASS PythonBuiltin AS PythonObjectImpl
 ENDDEFINE
 
 FUNCTION PythonFunctionCall(modulename, funcname, argtuple, kwarg_dict)
-   LOCAL pymod
-   pymod = CREATEOBJECT('PythonModule', modulename)
+   LOCAL pymod, oerr
+   TRY
+      pymod = CREATEOBJECT('PythonModule', modulename)
+   CATCH TO OERR
+   ENDTRY
+
+   IF VARTYPE(OERR) == 'O'
+      ERROR OERR.MESSAGE
+      RETURN
+   ENDIF
+
    IF VARTYPE(pymod) == 'O' AND UPPER(argtuple.class) == 'PYTHONTUPLE'
       RETURN pymod.CallMethod(funcname, argtuple, kwarg_dict)
    ELSE
@@ -343,7 +357,7 @@ FUNCTION py_error
    pytraceback = 0
 
    PyErr_Fetch(@pytype, @pyvalue, @pytraceback)
-
+   PyErr_NormalizeException(@pytype, @pyvalue, @pytraceback)
    IF pytype != 0
       pytype = CREATEOBJECT('PythonObjectImpl', pytype)
       Py_IncRef(pytype.obj())
@@ -362,9 +376,10 @@ FUNCTION py_error
       pytraceback = PyNone
    ENDIF
 
-   errlist = PythonFunctionCall('traceback', "format_exception", CREATEOBJECT('PythonTuple', pytype, pyvalue, pytraceback))
-   pynewline = CREATEOBJECT('PythonObject', CHR(10))
-   return pynewline.callmethod('join', CREATEOBJECT('pythontuple', errlist.callmethod('__reversed__', CREATEOBJECT('PythonTuple'), .NULL.)), .NULL.)
+   exc_info_dict = CREATEOBJECT('pythondictionary', CREATEOBJECT('PYTHONTUPLE', CREATEOBJECT('PYTHONTUPLE', 'exc_info', CREATEOBJECT('PythonTuple', pytype, pyvalue, pytraceback))))
+   error_message = pyvalue.getattr('message')
+   pylogger.callmethod('error', CREATEOBJECT('PythonTuple', error_message), exc_info_dict)
+   return error_message
 ENDFUNC
 
 DEFINE CLASS PyStdoutRedirect AS CUSTOM
@@ -403,6 +418,7 @@ PROCEDURE start_python
       DECLARE Py_DecRef IN Python27\python27.dll integer
       DECLARE integer PyErr_Occurred IN Python27\python27.dll
       DECLARE PyErr_Fetch IN Python27\python27.dll integer @, integer @, integer @
+      DECLARE PyErr_NormalizeException IN Python27\python27.dll integer @, integer @, integer @
       DECLARE integer PyImport_ImportModule IN Python27\python27.dll string
       DECLARE integer PyString_AsString IN Python27\python27.dll integer
       DECLARE integer PyString_Size IN Python27\python27.dll integer
@@ -428,7 +444,7 @@ PROCEDURE start_python
       DECLARE integer PyTuple_New IN Python27\python27.dll integer
       DECLARE integer PyTuple_SetItem IN Python27\python27.dll integer, integer, integer
 
-      PUBLIC PyBuiltins, PyNone, PyDatetime, PySys, PyStderr, PyStdout
+      PUBLIC PyBuiltins, PyNone, PyDatetime, PySys, PyStderr, PyStdout, pylogger
       PyBuiltins = CREATEOBJECT('PythonModule', '__builtin__')
       PyNone = PyBuiltins.GetAttrRetObj('None')
       PyDatetime = CREATEOBJECT('PythonModule', 'datetime')
@@ -441,6 +457,7 @@ PROCEDURE start_python
       PySys.setAttr('argv', PySysArgv)
       PyStdout = CREATEOBJECT('PyStdoutRedirect', 'stdout')
       PyStderr = CREATEOBJECT('PyStdoutRedirect', 'stderr')
+      PYlogger = pythonfunctioncall('logging', 'getLogger', CREATEOBJECT('pythontuple', 'foxpro2python'))
    ENDIF
 ENDPROC
 
