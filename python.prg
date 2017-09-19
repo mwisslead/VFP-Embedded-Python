@@ -379,7 +379,7 @@ FUNCTION py_error
    ENDIF
 
    exc_info_dict = CREATEOBJECT('pythondictionary', CREATEOBJECT('PYTHONTUPLE', CREATEOBJECT('PYTHONTUPLE', 'exc_info', CREATEOBJECT('PythonTuple', pytype, pyvalue, pytraceback))))
-   error_message = pyvalue.getattr('message')
+   error_message = pytype.getattr('__name__') + ': ' + pythonfunctioncall('__builtin__', 'str', CREATEOBJECT('pythontuple', pyvalue.getattrretobj('message')))
    pylogger.callmethod('error', CREATEOBJECT('PythonTuple', error_message), exc_info_dict)
    return error_message
 ENDFUNC
