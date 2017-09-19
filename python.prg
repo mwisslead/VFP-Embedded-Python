@@ -70,23 +70,40 @@ DEFINE CLASS PythonObjectImpl AS Custom
    ENDPROC
 
    PROCEDURE SetItem(ind, foxval)
-      LOCAL pyind, pyval
-      pyind = CREATEOBJECT('PythonObject', ind)
-      pyval = CREATEOBJECT('PythonObject', foxval)
-      RETURN PyObject_SetItem(this.pyobject, pyind.obj(), pyval.obj()) != -1
+      LOCAL oerr, pyind, pyval
+      TRY
+         pyind = CREATEOBJECT('PythonObject', ind)
+         pyval = CREATEOBJECT('PythonObject', foxval)
+         IF PyObject_SetItem(this.pyobject, pyind.obj(), pyval.obj()) == -1
+            ERROR PY_ERROR()
+         ENDIF
+      CATCH TO OERR
+
+      ENDTRY
+
+      IF VARTYPE(OERR) == 'O'
+         ERROR OERR.MESSAGE
+         RETURN .F.
+      ENDIF
+
+      RETURN .T.
    ENDPROC
 
    PROCEDURE DelItem(ind)
       LOCAL pyind
       pyind = CREATEOBJECT('PythonObject', ind)
-      RETURN PyObject_DelItem(this.pyobject, pyind.obj()) != -1
+      IF PyObject_DelItem(this.pyobject, pyind.obj()) == -1
+         ERROR PY_ERROR()
+         RETURN .F.
+      ENDIF
+      RETURN .T.
    ENDPROC
 
    FUNCTION GetAttrRetObj(attrname)
       LOCAL attrobj, retval
       attrobj = PyObject_GetAttrString(this.pyobject, attrname)
       IF attrobj == 0
-          ERROR('object does not contain attribute: ' + attrname)
+          ERROR PY_ERROR()
           RETURN .NULL.
       ENDIF
       RETURN CREATEOBJECT('PythonObjectImpl', attrobj)
@@ -103,13 +120,23 @@ DEFINE CLASS PythonObjectImpl AS Custom
    ENDPROC
 
    PROCEDURE SetAttr(attrname, foxval)
+      LOCAL retval
       pyval = CREATEOBJECT('PythonObject', foxval)
-      RETURN PyObject_SetAttrString(this.pyobject, attrname, pyval.obj()) != -1
+      IF PyObject_SetAttrString(this.pyobject, attrname, pyval.obj()) == -1
+         ERROR PY_ERROR()
+         RETURN .F.
+      ENDIF
+      RETURN .T.
    ENDPROC
 
    FUNCTION Iter_Access
+      LOCAL retval, pyiter, nextitem
       retval = CREATEOBJECT("collection")
       pyiter = PyObject_GetIter(this.pyobject)
+      IF pyiter == 0
+         ERROR py_error()
+         RETURN retval
+      ENDIF
       nextitem = PyIter_Next(pyiter)
       DO WHILE nextitem != 0
          pyitem = CREATEOBJECT('PythonObjectImpl', nextitem)
@@ -138,28 +165,14 @@ DEFINE CLASS PythonObjectImpl AS Custom
 
    PROCEDURE CallRetObj(argtuple, kwarg_dict)
       LOCAL pyobj, pyval
-      IF PyCallable_Check(this.pyobject) == 0
-         ERROR 'Object not callable'
-         RETURN .F.
-      ENDIF
-
-      IF PCOUNT() < 1 OR isnull(argtuple) or (vartype(argtuple) == 'L' and argtuple == .F.)
-         argtuple = createobject('PythonTuple')
-      ENDIF
-      IF VARTYPE(argtuple) <> 'O' OR argtuple.type() <> "<type 'tuple'>"
-         ERROR 'Argument must be Python Tuple'
-         RETURN .F.
-      ENDIF
-
-      IF PCOUNT() < 2 OR isnull(kwarg_dict) or (vartype(kwarg_dict) == 'L' and kwarg_dict == .F.)
+      DO CASE
+      CASE VARTYPE(argtuple) != 'O'
+         pyobj = PyObject_Call(this.pyobject, PyEmptyTuple.obj(), 0)
+      CASE VARTYPE(kwarg_dict) != 'O'
          pyobj = PyObject_Call(this.pyobject, argtuple.obj(), 0)
-      ELSE
-         IF VARTYPE(kwarg_dict) <> 'O' OR kwarg_dict.type() <> "<type 'dict'>"
-            ERROR 'Argument must be Python Dictionary'
-            RETURN .F.
-         ENDIF
+      OTHERWISE
          pyobj = PyObject_Call(this.pyobject, argtuple.obj(), kwarg_dict.obj())
-      ENDIF
+      ENDCASE
 
       IF pyobj == 0
          ERROR py_error()
@@ -260,11 +273,17 @@ DEFINE CLASS PythonObject AS PythonObjectImpl
          CASE valtype == 'L'
             pyobject = PyBool_FromLong(foxval)
          CASE valtype == 'O'
-            IF PEMSTATUS(foxval, 'obj', 3) != 'Method'
-               ERROR 'Cannot create PythonObject from foxpro class'
+            TRY
+               pyobject = foxval.obj()
+            CATCH TO OERR
+
+            ENDTRY
+
+            IF VARTYPE(OERR) == 'O'
+               ERROR 'Cannot create PythonObject from foxpro classes'
                RETURN
             ENDIF
-            pyobject = foxval.obj()
+
             Py_IncRef(pyobject)
          CASE valtype == 'T' OR valtype == 'D'
             LOCAL DateTuple, DateMethod
@@ -332,6 +351,7 @@ FUNCTION PythonFunctionCall(modulename, funcname, argtuple, kwarg_dict)
    TRY
       pymod = CREATEOBJECT('PythonModule', modulename)
    CATCH TO OERR
+
    ENDTRY
 
    IF VARTYPE(OERR) == 'O'
@@ -339,11 +359,7 @@ FUNCTION PythonFunctionCall(modulename, funcname, argtuple, kwarg_dict)
       RETURN
    ENDIF
 
-   IF VARTYPE(pymod) == 'O' AND UPPER(argtuple.class) == 'PYTHONTUPLE'
-      RETURN pymod.CallMethod(funcname, argtuple, kwarg_dict)
-   ELSE
-      ERROR('argtuple argument must be of type PythonTuple')
-   ENDIF
+   RETURN pymod.CallMethod(funcname, argtuple, kwarg_dict)
 ENDFUNC
 
 FUNCTION py_error
@@ -440,13 +456,13 @@ PROCEDURE start_python
       DECLARE integer PyObject_DelItem IN Python27\python27.dll integer, integer
       DECLARE integer PyObject_GetIter IN Python27\python27.dll integer
       DECLARE integer PyIter_Next IN Python27\python27.dll integer
-      DECLARE integer PyCallable_Check IN Python27\python27.dll integer
       DECLARE integer PyDict_New IN Python27\python27.dll
       DECLARE integer PyList_New IN Python27\python27.dll integer
       DECLARE integer PyTuple_New IN Python27\python27.dll integer
       DECLARE integer PyTuple_SetItem IN Python27\python27.dll integer, integer, integer
 
-      PUBLIC PyBuiltins, PyNone, PyDatetime, PySys, PyStderr, PyStdout, pylogger
+      PUBLIC PyBuiltins, PyNone, PyDatetime, PySys, PyStderr, PyStdout, pylogger, PyEmptyTuple
+      PyEmptyTuple = CREATEOBJECT('PythonTuple')
       PyBuiltins = CREATEOBJECT('PythonModule', '__builtin__')
       PyNone = PyBuiltins.GetAttrRetObj('None')
       PyDatetime = CREATEOBJECT('PythonModule', 'datetime')
