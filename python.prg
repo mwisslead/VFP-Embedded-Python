@@ -25,11 +25,13 @@ DEFINE CLASS PythonObjectImpl AS Custom
                retval = PyInt_AsLong(this.pyobject)
             CASE typestr == "<type 'float'>"
                retval = PyFloat_AsDouble(this.pyobject)
-            CASE typestr == "<type 'str'>" OR typestr == "<type 'unicode'>"
+            CASE typestr == "<type 'str'>"
                LOCAL string_pointer, string_length
                string_length = PyString_Size(this.pyobject)
                string_pointer = PyString_AsString(this.pyobject)
                retval = SYS(2600, string_pointer, string_length)
+            CASE typestr == "<type 'unicode'>"
+               retval = this.callmethod('encode', CREATEOBJECT('pythontuple', 'utf-8'))
             CASE typestr == "<type 'datetime.date'>"
                retval = DATE(this.getattr('year'), this.getattr('month'), this.getattr('day'))
             CASE typestr == "<type 'datetime.datetime'>"
