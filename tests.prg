@@ -11,7 +11,9 @@ SET ASSERT ON
 
 PythonFunctionCall('logging', 'basicConfig', PyEmptyTuple)
 Assert PyBuiltins.callmethod('str', CREATEOBJECT('pythontuple', 3)) == '3'
-Assert PyBuiltins.callmethod('unicode', CREATEOBJECT('pythontuple', 3)) == '3'
+IF PyMajorVersion == 2
+   Assert PyBuiltins.callmethod('unicode', CREATEOBJECT('pythontuple', 3)) == '3'
+ENDIF
 
 Assert PyBuiltins.callmethod('round', CreateObject('pythontuple', 3.5)) == 4
 Assert PyBuiltins.callmethod('max', CreateObject('pythontuple', 3.5, 3)) == 3.5

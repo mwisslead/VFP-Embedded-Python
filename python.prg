@@ -23,18 +23,18 @@ DEFINE CLASS PythonObjectImpl AS Custom
             CASE this.pyobject == PyNone.obj()
                retval = .NULL.
             CASE typeobj == PyBoolType.obj()
-               retval = PyInt_AsLong(this.pyobject) > 0
-            CASE typeobj == PyIntType.obj()
-               retval = PyInt_AsLong(this.pyobject)
+               retval = PyLong_AsLong(this.pyobject) > 0
+            CASE typeobj == PyIntType.obj() OR typeobj == PyNotLongType.obj()
+               retval = PyLong_AsLong(this.pyobject)
             CASE typeobj == PyFloatType.obj()
                retval = PyFloat_AsDouble(this.pyobject)
-            CASE typeobj == PyStrType.obj()
+            CASE typeobj == PyBytesType.obj()
                LOCAL string_pointer, string_length
-               string_length = PyString_Size(this.pyobject)
-               string_pointer = PyString_AsString(this.pyobject)
+               string_length = PyBytes_Size(this.pyobject)
+               string_pointer = PyBytes_AsString(this.pyobject)
                retval = SYS(2600, string_pointer, string_length)
-            CASE typeobj == PyUnicodeType.obj()
-               retval = this.callmethod('encode', CREATEOBJECT('pythontuple', 'utf-8'))
+            CASE typeobj == PyStrType.obj()
+               retval = this.callmethod('encode', CREATEOBJECT('PythonTuple', 'utf-8'))
             CASE typeobj == PyDateType.obj()
                retval = DATE(this.getattr('year'), this.getattr('month'), this.getattr('day'))
             CASE typeobj == PyDatetimeType.obj()
@@ -259,12 +259,12 @@ DEFINE CLASS PythonObject AS PythonObjectImpl
       DO CASE
          CASE valtype == 'N'
             IF ROUND(foxval, 0) == foxval
-               pyobject = PyInt_FromLong(foxval)
+               pyobject = PyLong_FromLong(foxval)
             ELSE
                pyobject = PyFloat_FromDouble(foxval)
             ENDIF
          CASE valtype == 'C'
-            pyobject = PyString_FromStringAndSize(foxval, len(foxval))
+            pyobject = PyUnicode_FromStringAndSize(foxval, len(foxval))
          CASE valtype == 'L'
             pyobject = PyBool_FromLong(foxval)
          CASE valtype == 'O'
@@ -401,7 +401,13 @@ DEFINE CLASS PyStdoutRedirect AS CUSTOM
    io = .NULL.
 
    FUNCTION INIT(output_type)
-      this.io = PythonFunctionCall('StringIO', 'StringIO', PyEmptyTuple)
+      LOCAL stringiomodule
+      IF PyMajorVersion == 2
+         stringiomodule = 'StringIO'
+      ELSE
+         stringiomodule = 'io'
+      ENDIF
+      this.io = PythonFunctionCall(stringiomodule, 'StringIO', PyEmptyTuple)
       PySys.setAttr(output_type, this.io)
    ENDFUNC
 
@@ -413,56 +419,99 @@ DEFINE CLASS PyStdoutRedirect AS CUSTOM
    ENDFUNC
 ENDDEFINE
 
-PROCEDURE start_python
-   DECLARE integer Py_IsInitialized IN Python27\python27.dll
+PROCEDURE start_python(PythonHomeArg)
+   PUBLIC PythonHome, PythonDll, PyMajorVersion
+   IF VARTYPE(PythonHomeArg) != 'C'
+      PythonHome = 'Python27'
+   ELSE
+      PythonHome = PythonHomeArg
+   ENDIF
+   Local PythonExecutable
+   PythonDll = ADDBS(PythonHome) + 'python27.dll'
+   PythonExecutable = ADDBS(PythonHome) + 'pythonw.exe'
+   PyMajorVersion = 2
+   DECLARE integer Py_IsInitialized IN (PythonDll)
 
    IF Py_IsInitialized() == 0
-      DECLARE Py_SetPythonHome IN Python27\python27.dll string
-      DECLARE Py_Initialize IN Python27\python27.dll
-      Py_SetPythonHome('Python27')
-      Py_Initialize()
-      CLEAR DLLS Py_SetPythonHome, Py_Initialize
+      IF PyMajorVersion == 3
+         PythonHome = STRCONV(PythonHome, 12)
+      ENDIF
+      DECLARE integer GetProcessHeap IN WIN32API
+      DECLARE integer HeapAlloc IN WIN32API integer, integer, integer
+      LOCAL PythonHomeMemory
+      PythonHomeMemory = HeapAlloc(GetProcessHeap(), 0, LEN(PythonHome) + 1)
+      SYS(2600, PythonHomeMemory, LEN(PythonHome) + 1, PythonHome + CHR(0))
 
-      DECLARE Py_IncRef IN Python27\python27.dll integer
-      DECLARE Py_DecRef IN Python27\python27.dll integer
-      DECLARE integer PyErr_Occurred IN Python27\python27.dll
-      DECLARE PyErr_Fetch IN Python27\python27.dll integer @, integer @, integer @
-      DECLARE PyErr_NormalizeException IN Python27\python27.dll integer @, integer @, integer @
-      DECLARE integer PyImport_ImportModule IN Python27\python27.dll string
-      DECLARE integer PyString_AsString IN Python27\python27.dll integer
-      DECLARE integer PyString_Size IN Python27\python27.dll integer
-      DECLARE integer PyString_FromStringAndSize IN Python27\python27.dll string, integer
-      DECLARE long PyInt_AsLong IN Python27\python27.dll integer
-      DECLARE integer PyInt_FromLong IN Python27\python27.dll long
-      DECLARE integer PyBool_FromLong IN Python27\python27.dll long
-      DECLARE double PyFloat_AsDouble IN Python27\python27.dll integer
-      DECLARE integer PyFloat_FromDouble IN Python27\python27.dll double
-      DECLARE integer PyObject_Repr IN Python27\python27.dll integer
-      DECLARE integer PyObject_GetAttrString IN Python27\python27.dll integer, string
-      DECLARE integer PyObject_SetAttrString IN Python27\python27.dll integer, string, integer
-      DECLARE integer PyObject_Type IN Python27\python27.dll integer
-      DECLARE integer PyObject_Call IN Python27\python27.dll integer, integer, integer
-      DECLARE integer PyObject_GetItem IN Python27\python27.dll integer, integer
-      DECLARE integer PyObject_SetItem IN Python27\python27.dll integer, integer, integer
-      DECLARE integer PyObject_DelItem IN Python27\python27.dll integer, integer
-      DECLARE integer PyObject_GetIter IN Python27\python27.dll integer
-      DECLARE integer PyIter_Next IN Python27\python27.dll integer
-      DECLARE integer PyDict_New IN Python27\python27.dll
-      DECLARE integer PyList_New IN Python27\python27.dll integer
-      DECLARE integer PyTuple_New IN Python27\python27.dll integer
-      DECLARE integer PyTuple_SetItem IN Python27\python27.dll integer, integer, integer
+      DECLARE Py_SetPythonHome IN (PythonDll) integer
+      Py_SetPythonHome(PythonHomeMemory)
+
+      DECLARE integer Py_GetPythonHome IN (PythonDll)
+      &&?SYS(2600, Py_GetPythonHome(), LEN(pythonhome) + 1)
+
+      DECLARE Py_Initialize IN (PythonDll)
+      Py_Initialize()
+
+      CLEAR DLLS GetProcessHeap, HeapAlloc, Py_SetPythonHome, Py_Initialize
+
+      DECLARE Py_IncRef IN (PythonDll) integer
+      DECLARE Py_DecRef IN (PythonDll) integer
+      DECLARE integer PyErr_Occurred IN (PythonDll)
+      DECLARE PyErr_Fetch IN (PythonDll) integer @, integer @, integer @
+      DECLARE PyErr_NormalizeException IN (PythonDll) integer @, integer @, integer @
+      DECLARE integer PyImport_ImportModule IN (PythonDll) string
+      IF PyMajorVersion == 2
+         DECLARE integer PyUnicodeUCS2_FromStringAndSize IN (PythonDll) As PyUnicode_FromStringAndSize string, integer
+         DECLARE integer PyString_AsString IN (PythonDll) AS PyBytes_AsString integer
+         DECLARE integer PyString_Size IN (PythonDll) AS PyBytes_Size integer
+         DECLARE integer PyString_FromStringAndSize IN (PythonDll) AS PyBytes_FromStringAndSize string, integer
+      ELSE
+         DECLARE integer PyUnicode_FromStringAndSize IN (PythonDll) string, integer
+         DECLARE integer PyBytes_AsString IN (PythonDll) integer
+         DECLARE integer PyBytes_Size IN (PythonDll) integer
+         DECLARE integer PyBytes_FromStringAndSize IN (PythonDll) string, integer
+      ENDIF
+      DECLARE long PyLong_AsLong IN (PythonDll) integer
+      DECLARE integer PyLong_FromLong IN (PythonDll) long
+      DECLARE integer PyBool_FromLong IN (PythonDll) long
+      DECLARE double PyFloat_AsDouble IN (PythonDll) integer
+      DECLARE integer PyFloat_FromDouble IN (PythonDll) double
+      DECLARE integer PyObject_Repr IN (PythonDll) integer
+      DECLARE integer PyObject_GetAttrString IN (PythonDll) integer, string
+      DECLARE integer PyObject_SetAttrString IN (PythonDll) integer, string, integer
+      DECLARE integer PyObject_Type IN (PythonDll) integer
+      DECLARE integer PyObject_Call IN (PythonDll) integer, integer, integer
+      DECLARE integer PyObject_GetItem IN (PythonDll) integer, integer
+      DECLARE integer PyObject_SetItem IN (PythonDll) integer, integer, integer
+      DECLARE integer PyObject_DelItem IN (PythonDll) integer, integer
+      DECLARE integer PyObject_GetIter IN (PythonDll) integer
+      DECLARE integer PyIter_Next IN (PythonDll) integer
+      DECLARE integer PyDict_New IN (PythonDll)
+      DECLARE integer PyList_New IN (PythonDll) integer
+      DECLARE integer PyTuple_New IN (PythonDll) integer
+      DECLARE integer PyTuple_SetItem IN (PythonDll) integer, integer, integer
 
       PUBLIC PyBuiltins, PyNone, PyDatetime, PySys, PyStderr, PyStdout, PyLogger, PyEmptyTuple
-      PUBLIC PyUnicodeType, PyStrType, PyBoolType, PyIntType, PyFloatType, PyDatetimeType, PyDateType, PyDecimalType
+      PUBLIC PyStrType, PyBytesType, PyBoolType, PyIntType, PyNotLongType, PyFloatType, PyDatetimeType, PyDateType, PyDecimalType
       PyEmptyTuple = CREATEOBJECT('PythonTuple')
-      PyBuiltins = CREATEOBJECT('PythonModule', '__builtin__')
+      IF PyMajorVersion == 2
+         PyBuiltins = CREATEOBJECT('PythonModule', '__builtin__')
+      ELSE
+         PyBuiltins = CREATEOBJECT('PythonModule', 'builtins')
+      ENDIF
       PyNone = PyBuiltins.GetAttrRetObj('None')
       PyDatetime = CREATEOBJECT('PythonModule', 'datetime')
       PySys = CREATEOBJECT('PythonModule', 'sys')
-      PyUnicodeType = PyBuiltins.GetAttrRetObj('unicode')
-      PyStrType = PyBuiltins.GetAttrRetObj('str')
+      IF PyMajorVersion == 2
+         PyStrType = PyBuiltins.GetAttrRetObj('unicode')
+         PyNotLongType = PyBuiltins.GetAttrRetObj('int')
+         PyIntType = PyBuiltins.GetAttrRetObj('long')
+      ELSE
+         PyStrType = PyBuiltins.GetAttrRetObj('str')
+         PyIntType = PyBuiltins.GetAttrRetObj('int')
+         PyNotLongType = PyBuiltins.GetAttrRetObj('int')
+      ENDIF
+      PyBytesType = PyBuiltins.GetAttrRetObj('bytes')
       PyBoolType = PyBuiltins.GetAttrRetObj('bool')
-      PyIntType = PyBuiltins.GetAttrRetObj('int')
       PyFloatType = PyBuiltins.GetAttrRetObj('float')
       PyDatetimeType = PyDatetime.GetAttrRetObj('datetime')
       PyDateType = PyDatetime.GetAttrRetObj('date')
@@ -471,7 +520,7 @@ PROCEDURE start_python
       PyDecimalType = Decimal_Module.GetAttrRetObj('Decimal')
       PySysPath = PySys.getAttrRetObj('path')
       PySysPath.CallMethod('append', CREATEOBJECT('PythonTuple', CURDIR()), .NULL.)
-      PySys.setAttr('executable', CURDIR() + 'Python27\pythonw.exe')
+      PySys.setAttr('executable', PythonExecutable)
       PySysArgv = CREATEOBJECT('PythonList')
       PySysArgv.callmethod('append', CREATEOBJECT('PythonTuple', ''), .NULL.)
       PySys.setAttr('argv', PySysArgv)
@@ -483,11 +532,13 @@ ENDPROC
 
 PROCEDURE stop_python
    RELEASE PyBuiltins, PyNone, PyDatetime, PySys, PyStderr, PyStdout, PyLogger, PyEmptyTuple
-   RELEASE PyUnicodeType, PyStrType, PyBoolType, PyIntType, PyFloatType, PyDatetimeType, PyDateType, PyDecimalType
-   DECLARE integer Py_IsInitialized IN Python27\python27.dll
-   IF Py_IsInitialized() != 0
-      DECLARE Py_Finalize IN Python27\python27.dll
+   RELEASE PyStrType, PyBytesType, PyBoolType, PyIntType, PyNotLongType, PyFloatType, PyDatetimeType, PyDateType, PyDecimalType, PyMajorVersion
+   Local IsInitialized
+   IsInitialized = (Py_IsInitialized() != 0)
+   IF IsInitialized
+      DECLARE Py_Finalize IN (PythonDll)
       Py_Finalize()
       CLEAR DLLS Py_Finalize
+      Release PythonDll
    ENDIF
 ENDPROC
