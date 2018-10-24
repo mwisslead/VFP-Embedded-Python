@@ -9,6 +9,7 @@ start_python()
 
 SET ASSERT ON
 
+PythonFunctionCall('logging', 'basicConfig', PyEmptyTuple)
 Assert PyBuiltins.callmethod('str', CREATEOBJECT('pythontuple', 3)) == '3'
 Assert PyBuiltins.callmethod('unicode', CREATEOBJECT('pythontuple', 3)) == '3'
 
@@ -30,3 +31,5 @@ try
 catch to oerr
    ?oerr.message
 endtry
+
+?pystderr.read()

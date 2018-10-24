@@ -252,7 +252,7 @@ ENDDEFINE
 
 DEFINE CLASS PythonObject AS PythonObjectImpl
    FUNCTION INIT(foxval)
-      LOCAL valtype, pyobject
+      LOCAL valtype, pyobject, oerr
       valtype = VARTYPE(foxval)
       DO CASE
          CASE valtype == 'N'
@@ -387,9 +387,10 @@ FUNCTION py_error
       pytraceback = PyNone
    ENDIF
 
-   exc_info_dict = CREATEOBJECT('pythondictionary', CREATEOBJECT('PYTHONTUPLE', CREATEOBJECT('PYTHONTUPLE', 'exc_info', CREATEOBJECT('PythonTuple', pytype, pyvalue, pytraceback))))
-   error_message = pytype.getattr('__name__') + ': ' + PyStrType.Call(CREATEOBJECT('pythontuple', pyvalue))
-   pylogger.callmethod('error', CREATEOBJECT('PythonTuple', error_message), exc_info_dict)
+   local valuetuple
+   valuetuple = CREATEOBJECT('pythontuple', pyvalue)
+   pylogger.callmethod('exception', valuetuple)
+   error_message = pytype.getattr('__name__') + ': ' + PyStrType.Call(valuetuple)
    return error_message
 ENDFUNC
 
@@ -403,13 +404,13 @@ DEFINE CLASS PyStdoutRedirect AS CUSTOM
    ENDFUNC
 
    FUNCTION reset_io
-      this.io = PythonFunctionCall('StringIO', 'StringIO', CREATEOBJECT('PythonTuple'))
+      this.io = PythonFunctionCall('StringIO', 'StringIO', PyEmptyTuple)
       PySys.setAttr(this.outtype, this.io)
    ENDFUNC
 
    FUNCTION read
       LOCAL retval
-      retval = this.io.callmethod('getvalue', CREATEOBJECT('PythonTuple'), .NULL.)
+      retval = this.io.callmethod('getvalue', PyEmptyTuple)
       this.reset_io()
       RETURN retval
    ENDFUNC
