@@ -15,32 +15,31 @@ DEFINE CLASS PythonObjectImpl AS Custom
    ENDPROC
 
    PROCEDURE GETVAL
-      LOCAL retval, typestr
+      LOCAL retval, typeobj
       IF this.pyobject > 0
-         typestr = this.type()
+         typeobj = this.type()
+         typeobj = typeobj.obj()
          DO CASE
-            CASE typestr == "<type 'bool'>"
+            CASE this.pyobject == PyNone.obj()
+               retval = .NULL.
+            CASE typeobj == PyBoolType.obj()
                retval = PyInt_AsLong(this.pyobject) > 0
-            CASE typestr == "<type 'int'>"
+            CASE typeobj == PyIntType.obj()
                retval = PyInt_AsLong(this.pyobject)
-            CASE typestr == "<type 'float'>"
+            CASE typeobj == PyFloatType.obj()
                retval = PyFloat_AsDouble(this.pyobject)
-            CASE typestr == "<type 'str'>"
+            CASE typeobj == PyStrType.obj()
                LOCAL string_pointer, string_length
                string_length = PyString_Size(this.pyobject)
                string_pointer = PyString_AsString(this.pyobject)
                retval = SYS(2600, string_pointer, string_length)
-            CASE typestr == "<type 'unicode'>"
+            CASE typeobj == PyUnicodeType.obj()
                retval = this.callmethod('encode', CREATEOBJECT('pythontuple', 'utf-8'))
-            CASE typestr == "<type 'datetime.date'>"
+            CASE typeobj == PyDateType.obj()
                retval = DATE(this.getattr('year'), this.getattr('month'), this.getattr('day'))
-            CASE typestr == "<type 'datetime.datetime'>"
-               year_val = this.getattr('year')
-               month_val = this.getattr('month')
+            CASE typeobj == PyDatetimeType.obj()
                retval = DATETIME(this.getattr('year'), this.getattr('month'), this.getattr('day'),;
                                  this.getattr('hour'), this.getattr('minute'), this.getattr('second'))
-            CASE typestr == "<type 'NoneType'>"
-               retval = .NULL.
             OTHERWISE
                retval = this
          ENDCASE
@@ -158,9 +157,7 @@ DEFINE CLASS PythonObjectImpl AS Custom
    ENDPROC
 
    FUNCTION Type()
-      LOCAL pyobjtype
-      pyobjtype = CREATEOBJECT('PythonObjectImpl', PyObject_Type(this.pyobject))
-      return pyobjtype.repr()
+      return CREATEOBJECT('PythonObjectImpl', PyObject_Type(this.pyobject))
    ENDFUNC
 
    PROCEDURE CallRetObj(argtuple, kwarg_dict)
@@ -461,12 +458,20 @@ PROCEDURE start_python
       DECLARE integer PyTuple_New IN Python27\python27.dll integer
       DECLARE integer PyTuple_SetItem IN Python27\python27.dll integer, integer, integer
 
-      PUBLIC PyBuiltins, PyNone, PyDatetime, PySys, PyStderr, PyStdout, pylogger, PyEmptyTuple
+      PUBLIC PyBuiltins, PyNone, PyDatetime, PySys, PyStderr, PyStdout, PyLogger, PyEmptyTuple
+      PUBLIC PyUnicodeType, PyStrType, PyBoolType, PyIntType, PyFloatType, PyDatetimeType, PyDateType
       PyEmptyTuple = CREATEOBJECT('PythonTuple')
       PyBuiltins = CREATEOBJECT('PythonModule', '__builtin__')
       PyNone = PyBuiltins.GetAttrRetObj('None')
       PyDatetime = CREATEOBJECT('PythonModule', 'datetime')
       PySys = CREATEOBJECT('PythonModule', 'sys')
+      PyUnicodeType = PyBuiltins.GetAttrRetObj('unicode')
+      PyStrType = PyBuiltins.GetAttrRetObj('str')
+      PyBoolType = PyBuiltins.GetAttrRetObj('bool')
+      PyIntType = PyBuiltins.GetAttrRetObj('int')
+      PyFloatType = PyBuiltins.GetAttrRetObj('float')
+      PyDatetimeType = PyDatetime.GetAttrRetObj('datetime')
+      PyDateType = PyDatetime.GetAttrRetObj('date')
       PySysPath = PySys.getAttrRetObj('path')
       PySysPath.CallMethod('append', CREATEOBJECT('PythonTuple', CURDIR()), .NULL.)
       PySys.setAttr('executable', CURDIR() + 'Python27\pythonw.exe')
@@ -475,12 +480,13 @@ PROCEDURE start_python
       PySys.setAttr('argv', PySysArgv)
       PyStdout = CREATEOBJECT('PyStdoutRedirect', 'stdout')
       PyStderr = CREATEOBJECT('PyStdoutRedirect', 'stderr')
-      PYlogger = pythonfunctioncall('logging', 'getLogger', CREATEOBJECT('pythontuple', 'foxpro2python'))
+      PyLogger = PythonFunctionCall('logging', 'getLogger', CREATEOBJECT('pythontuple', 'foxpro2python'))
    ENDIF
 ENDPROC
 
 PROCEDURE stop_python
-   RELEASE PyDatetime, PyNone, PyBuiltins, PySys, PyStderr, PyStdout
+   RELEASE PyBuiltins, PyNone, PyDatetime, PySys, PyStderr, PyStdout, PyLogger, PyEmptyTuple
+   RELEASE PyUnicodeType, PyStrType, PyBoolType, PyIntType, PyFloatType, PyDatetimeType, PyDateType
    DECLARE integer Py_IsInitialized IN Python27\python27.dll
    IF Py_IsInitialized() != 0
       DECLARE Py_Finalize IN Python27\python27.dll
