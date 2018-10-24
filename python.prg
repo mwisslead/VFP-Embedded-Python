@@ -147,13 +147,9 @@ DEFINE CLASS PythonObjectImpl AS Custom
    ENDPROC
 
    PROCEDURE Repr
-      LOCAL pyrepr, retval, string_pointer, string_length
-      pyrepr = PyObject_Repr(this.pyobject)
-      string_length = PyString_Size(pyrepr)
-      string_pointer = PyString_AsString(pyrepr)
-      retval = SYS(2600, string_pointer, string_length)
-      Py_DecRef(pyrepr)
-      RETURN retval
+      LOCAL pyobject
+      pyobject = CREATEOBJECT('PythonObjectImpl', PyObject_Repr(this.pyobject))
+      RETURN pyobject.getval()
    ENDPROC
 
    FUNCTION Type()
@@ -392,7 +388,7 @@ FUNCTION py_error
    ENDIF
 
    exc_info_dict = CREATEOBJECT('pythondictionary', CREATEOBJECT('PYTHONTUPLE', CREATEOBJECT('PYTHONTUPLE', 'exc_info', CREATEOBJECT('PythonTuple', pytype, pyvalue, pytraceback))))
-   error_message = pytype.getattr('__name__') + ': ' + pythonfunctioncall('__builtin__', 'str', CREATEOBJECT('pythontuple', pyvalue.getattrretobj('message')))
+   error_message = pytype.getattr('__name__') + ': ' + PyStrType.Call(CREATEOBJECT('pythontuple', pyvalue))
    pylogger.callmethod('error', CREATEOBJECT('PythonTuple', error_message), exc_info_dict)
    return error_message
 ENDFUNC

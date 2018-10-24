@@ -23,3 +23,10 @@ ASSERT NowTuple.getitem(0) == Now
 ASSERT NowTuple.getitem(1) == TTOD(Now)
 
 ?NowTuple.repr()
+
+try
+   PythonFunctionCall('example_module', 'error', CreateObject('PythonTuple', .NULL.))
+   assert .f.
+catch to oerr
+   ?oerr.message
+endtry
