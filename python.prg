@@ -419,6 +419,25 @@ DEFINE CLASS PyStdoutRedirect AS CUSTOM
    ENDFUNC
 ENDDEFINE
 
+PROCEDURE GetMajorVersion(dllfile)
+   Local Version, RegEx, Oerr
+   LOCAL ARRAY DllInfo[1]
+
+   Version = 0
+   TRY
+      AGETFILEVERSION(DllInfo, dllfile)
+      Local RegEx
+      RegEx = CreateObject('VBScript.RegExp')
+      RegEx.pattern = '^([0-9]*)\.([0-9]*)\.([0-9]*)'
+      IF RegEx.test(DllInfo(4))
+         Version = INT(val(RegEx.replace(DllInfo[4], '$1')))
+      ENDIF
+   CATCH TO Oerr
+   ENDTRY
+
+   Return Version
+ENDPROC
+
 PROCEDURE start_python(PythonHomeArg)
    PUBLIC PythonHome, PythonDll, PyMajorVersion
    IF VARTYPE(PythonHomeArg) != 'C'
@@ -429,7 +448,13 @@ PROCEDURE start_python(PythonHomeArg)
    Local PythonExecutable
    PythonDll = ADDBS(PythonHome) + 'python27.dll'
    PythonExecutable = ADDBS(PythonHome) + 'pythonw.exe'
-   PyMajorVersion = 2
+
+   PyMajorVersion = GetMajorVersion(PythonDll)
+   IF PyMajorVersion == 0
+      ERROR 'Could not determine python version'
+      RETURN
+   ENDIF
+
    DECLARE integer Py_IsInitialized IN (PythonDll)
 
    IF Py_IsInitialized() == 0
