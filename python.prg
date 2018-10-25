@@ -439,8 +439,12 @@ PROCEDURE GetMajorVersion(dllfile)
 ENDPROC
 
 PROCEDURE FindDll(PythonHome)
-   PythonHome = ADDBS(PythonHome)
-   RETURN PythonHome + LOWER(JUSTFNAME(LEFT(PythonHome, LEN(PythonHome) - 1))) + '.dll'
+   LOCAL TESTFILE
+   TESTFILE = SYS(2000, ADDBS(PythonHome) + 'python??.dll')
+   DO WHILE NOT ISBLANK(TESTFILE) AND LEN(TESTFILE) < LEN('python??.dll')
+      TESTFILE = SYS(2000, ADDBS(PythonHome) + 'python??.dll', 1)
+   ENDDO
+   RETURN ADDBS(PythonHome) + TESTFILE
 ENDPROC
 
 PROCEDURE start_python(PythonHomeArg, PythonDllArg, PythonExecutable)

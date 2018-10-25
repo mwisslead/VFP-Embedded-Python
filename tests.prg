@@ -1,11 +1,11 @@
+LPARAMETERS PythonDirectory
+
 LOCAL PathToSet
-PathToSet = JUSTPATH(SYS(16))
+PathToSet = ADDBS(JUSTPATH(SYS(16)))
 
 SET DEFAULT TO (PathToSet)
-SET PATH TO (PathToSet)
-
-SET PROCEDURE TO python.prg
-start_python()
+SET PROCEDURE TO (PathToSet + 'python.prg')
+start_python(PythonDirectory)
 
 SET ASSERT ON
 
