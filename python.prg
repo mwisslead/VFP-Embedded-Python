@@ -438,16 +438,27 @@ PROCEDURE GetMajorVersion(dllfile)
    Return Version
 ENDPROC
 
-PROCEDURE start_python(PythonHomeArg)
+PROCEDURE FindDll(PythonHome)
+   PythonHome = ADDBS(PythonHome)
+   RETURN PythonHome + LOWER(JUSTFNAME(LEFT(PythonHome, LEN(PythonHome) - 1))) + '.dll'
+ENDPROC
+
+PROCEDURE start_python(PythonHomeArg, PythonDllArg, PythonExecutable)
    PUBLIC PythonHome, PythonDll, PyMajorVersion
    IF VARTYPE(PythonHomeArg) != 'C'
       PythonHome = 'Python27'
    ELSE
       PythonHome = PythonHomeArg
    ENDIF
-   Local PythonExecutable
-   PythonDll = ADDBS(PythonHome) + 'python27.dll'
-   PythonExecutable = ADDBS(PythonHome) + 'pythonw.exe'
+   IF PCOUNT() > 1
+      PythonDll = PythonDllArg
+   ELSE
+      PythonDll = FindDll(PythonHome)
+   ENDIF
+   IF PCOUNT() > 2
+   ELSE
+      PythonExecutable = ADDBS(PythonHome) + 'pythonw.exe'
+   ENDIF
 
    PyMajorVersion = GetMajorVersion(PythonDll)
    IF PyMajorVersion == 0
