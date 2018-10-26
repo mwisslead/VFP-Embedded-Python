@@ -397,22 +397,16 @@ ENDFUNC
 
 DEFINE CLASS PyStdoutRedirect AS CUSTOM
    io = .NULL.
-   outtype = ''
 
    FUNCTION INIT(output_type)
-      this.outtype = output_type
-      this.reset_io()
-   ENDFUNC
-
-   FUNCTION reset_io
       this.io = PythonFunctionCall('StringIO', 'StringIO', PyEmptyTuple)
-      PySys.setAttr(this.outtype, this.io)
+      PySys.setAttr(output_type, this.io)
    ENDFUNC
 
    FUNCTION read
-      LOCAL retval
       retval = this.io.callmethod('getvalue', PyEmptyTuple)
-      this.reset_io()
+      this.io.callmethod('seek', CreateObject('PythonTuple', 0))
+      this.io.callmethod('truncate', PyEmptyTuple)
       RETURN retval
    ENDFUNC
 ENDDEFINE
