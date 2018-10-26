@@ -387,9 +387,10 @@ FUNCTION py_error
       pytraceback = PyNone
    ENDIF
 
-   local valuetuple
+   local valuetuple, exc_info
    valuetuple = CREATEOBJECT('pythontuple', pyvalue)
-   pylogger.callmethod('exception', valuetuple)
+   exc_info = CREATEOBJECT('pythontuple', pytype, pyvalue, pytraceback)
+   pylogger.callmethod('error', valuetuple, CreateObject('PythonDictionary', CreateObject('PythonTuple', CreateObject('PythonTuple', 'exc_info', exc_info))))
    error_message = pytype.getattr('__name__') + ': ' + PyStrType.Call(valuetuple)
    return error_message
 ENDFUNC
