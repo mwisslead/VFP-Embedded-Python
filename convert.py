@@ -67,7 +67,7 @@ def main(argv=None):
         sys.path.append(args.path)
     else:
         sys.path.append('.')
-    mod = __import__(args.mod)
+    mod = import_module(args.mod)
 
     code = create_code(mod)
 
