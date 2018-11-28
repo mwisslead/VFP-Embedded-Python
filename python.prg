@@ -40,6 +40,8 @@ DEFINE CLASS PythonObjectImpl AS Custom
             CASE typeobj == PyDatetimeType.obj()
                retval = DATETIME(this.getattr('year'), this.getattr('month'), this.getattr('day'),;
                                  this.getattr('hour'), this.getattr('minute'), this.getattr('second'))
+            CASE typeobj == PyDecimalType.obj()
+               retval = VAL(PyStrType.Call(CREATEOBJECT('pythontuple', this)))
             OTHERWISE
                retval = this
          ENDCASE
@@ -451,7 +453,7 @@ PROCEDURE start_python
       DECLARE integer PyTuple_SetItem IN Python27\python27.dll integer, integer, integer
 
       PUBLIC PyBuiltins, PyNone, PyDatetime, PySys, PyStderr, PyStdout, PyLogger, PyEmptyTuple
-      PUBLIC PyUnicodeType, PyStrType, PyBoolType, PyIntType, PyFloatType, PyDatetimeType, PyDateType
+      PUBLIC PyUnicodeType, PyStrType, PyBoolType, PyIntType, PyFloatType, PyDatetimeType, PyDateType, PyDecimalType
       PyEmptyTuple = CREATEOBJECT('PythonTuple')
       PyBuiltins = CREATEOBJECT('PythonModule', '__builtin__')
       PyNone = PyBuiltins.GetAttrRetObj('None')
@@ -464,6 +466,9 @@ PROCEDURE start_python
       PyFloatType = PyBuiltins.GetAttrRetObj('float')
       PyDatetimeType = PyDatetime.GetAttrRetObj('datetime')
       PyDateType = PyDatetime.GetAttrRetObj('date')
+      Local Decimal_Module
+      Decimal_Module = CREATEOBJECT('PythonModule', 'decimal')
+      PyDecimalType = Decimal_Module.GetAttrRetObj('Decimal')
       PySysPath = PySys.getAttrRetObj('path')
       PySysPath.CallMethod('append', CREATEOBJECT('PythonTuple', CURDIR()), .NULL.)
       PySys.setAttr('executable', CURDIR() + 'Python27\pythonw.exe')
@@ -478,7 +483,7 @@ ENDPROC
 
 PROCEDURE stop_python
    RELEASE PyBuiltins, PyNone, PyDatetime, PySys, PyStderr, PyStdout, PyLogger, PyEmptyTuple
-   RELEASE PyUnicodeType, PyStrType, PyBoolType, PyIntType, PyFloatType, PyDatetimeType, PyDateType
+   RELEASE PyUnicodeType, PyStrType, PyBoolType, PyIntType, PyFloatType, PyDatetimeType, PyDateType, PyDecimalType
    DECLARE integer Py_IsInitialized IN Python27\python27.dll
    IF Py_IsInitialized() != 0
       DECLARE Py_Finalize IN Python27\python27.dll

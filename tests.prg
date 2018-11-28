@@ -100,3 +100,5 @@ RELEASE example_list
 PyBuiltins.callmethod('print', CreateObject('pythontuple', PI()))
 
 ?RTRIM(pystdout.read(), 0, CHR(10), CHR(13))
+
+assert PythonFunctionCall('decimal', 'Decimal', CreateObject('pythontuple', '1.57')) == 1.57
