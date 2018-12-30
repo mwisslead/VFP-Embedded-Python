@@ -12,7 +12,7 @@ Please see the example.prg for some usage examples.
 
 ## To use
 - Add python.prg to your project.
-- Install the Python27 folder into the working directory of the foxpro program.
-- Call the start_python procedure in python.prg
+- Make sure python is installed on the machine or place the python folder(Python27, Python36, etc.) into the working directory of the foxpro program.
+- Call the start_python procedure in python.prg with the python folder location (Python27 in the current directory is assumed if no argument is passed)
 - Call python functions with the PythonFunctionCall function (e.g. PythonFunctionCall('random', 'randint', CreateObject('PythonTuple', 5, 20)) is like calling random.randint(5, 20) in python)
 - Get items and attributes with obj.getitem and obj.getattr (e.g obj.getitem('key') will retrieve the dictionary item with key 'key')
