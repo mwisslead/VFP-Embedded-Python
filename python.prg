@@ -462,11 +462,24 @@ PROCEDURE start_python(PythonHomeArg, PythonDllArg, PythonExecutable)
 ENDPROC
 
 DEFINE CLASS PythonRuntime AS Custom
+   OnlyOne = .T.
    PythonHome = .Null.
    PythonDll = .Null.
    PyMajorVersion = .Null.
 
+   PROCEDURE CHECK_REINIT
+      LOCAL Instance_Index
+      LOCAL ARRAY Instance_Array[1]
+      RETURN AINSTANCE(Instance_Array, 'PythonRuntime') > 0
+   ENDPROC
+
    PROCEDURE INIT(PythonHomeArg, PythonDllArg, PythonExecutable)
+      IF THIS.CHECK_REINIT()
+         This.OnlyOne = .F.
+         ERROR 'Python Already Initialized'
+         RETURN
+      ENDIF
+
       PUBLIC PythonHome, PythonDll, PyMajorVersion
       IF VARTYPE(PythonHomeArg) != 'C'
          PythonHome = 'Python27'
@@ -602,6 +615,9 @@ DEFINE CLASS PythonRuntime AS Custom
    ENDPROC
 
    PROCEDURE Destroy
+      IF NOT THIS.OnlyOne
+         RETURN
+      ENDIF
       RELEASE PyStdOut, PyStdErr
       RELEASE PythonHome, PythonDll, PyMajorVersion
 
