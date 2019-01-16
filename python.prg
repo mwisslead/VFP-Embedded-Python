@@ -509,25 +509,38 @@ DEFINE CLASS PythonRuntime AS Custom
       DECLARE integer Py_IsInitialized IN (PythonDll)
 
       IF Py_IsInitialized() == 0
+         PythonHome = PythonHome + CHR(0)
          IF PyMajorVersion == 3
             PythonHome = STRCONV(PythonHome, 12)
          ENDIF
+
          DECLARE integer GetProcessHeap IN WIN32API
          DECLARE integer HeapAlloc IN WIN32API integer, integer, integer
+         DECLARE integer Py_GetPythonHome IN (PythonDll)
+
          LOCAL PythonHomeMemory
-         PythonHomeMemory = HeapAlloc(GetProcessHeap(), 0, LEN(PythonHome) + 1)
-         SYS(2600, PythonHomeMemory, LEN(PythonHome) + 1, PythonHome + CHR(0))
+         PythonHomeMemory = HeapAlloc(GetProcessHeap(), 0, LEN(PythonHome))
+         SYS(2600, PythonHomeMemory, LEN(PythonHome), PythonHome)
 
          DECLARE Py_SetPythonHome IN (PythonDll) integer
          Py_SetPythonHome(PythonHomeMemory)
 
-         DECLARE integer Py_GetPythonHome IN (PythonDll)
-         &&?SYS(2600, Py_GetPythonHome(), LEN(pythonhome) + 1)
 
-         DECLARE Py_Initialize IN (PythonDll)
-         Py_Initialize()
+         LOCAL HomeCheck
+         HomeCheck = SYS(2600, Py_GetPythonHome(), LEN(pythonhome))
+         IF PyMajorVersion == 3
+            HomeCheck = STRCONV(HomeCheck, 10)
+         ENDIF
+         HomeCheck = SUBSTR(HomeCheck, 1, LEN(HomeCheck) - 1)
+         IF HomeCheck != THIS.PythonHome
+            ERROR 'Memory Error setting python home'
+            RETURN
+         ENDIF
 
-         CLEAR DLLS GetProcessHeap, HeapAlloc, Py_SetPythonHome, Py_Initialize
+         DECLARE Py_InitializeEx IN (PythonDll) integer
+         Py_InitializeEx(0)
+
+         CLEAR DLLS GetProcessHeap, HeapAlloc, Py_SetPythonHome, Py_GetPythonHome, Py_Initialize
 
          DECLARE Py_IncRef IN (PythonDll) integer
          DECLARE Py_DecRef IN (PythonDll) integer
@@ -634,6 +647,17 @@ DEFINE CLASS PythonRuntime AS Custom
       THIS.DestroyPythonInstances('PythonObjectImpl')
 
       Py_Finalize()
+
+      DECLARE integer GetProcessHeap IN WIN32API
+      DECLARE integer HeapFree IN WIN32API integer, integer, integer
+      DECLARE integer Py_GetPythonHome IN (This.PythonDll)
+      DECLARE Py_SetPythonHome IN (This.PythonDll) integer
+
+      HeapFree(GetProcessHeap(), 0, Py_GetPythonHome())
+
+      Py_SetPythonHome(0)
+
+      CLEAR DLLS GetProcessHeap, HeapAlloc, Py_SetPythonHome, Py_GetPythonHome, Py_Initialize
 
       FOR Instance_Index = 1 TO ADLLS(Instance_Array)
          IF LOWER(Instance_Array[Instance_Index, 3]) == LOWER(This.PythonDll)
