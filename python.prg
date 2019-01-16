@@ -438,7 +438,7 @@ PROCEDURE FindDll(PythonHome)
    RETURN ADDBS(PythonHome) + TESTFILE
 ENDPROC
 
-PROCEDURE start_python(PythonHomeArg, PythonDllArg, PythonExecutable)
+PROCEDURE start_python(PythonHome, PythonDllArg, PythonExecutable)
    PUBLIC PythonRuntime
    LOCAL ERROR_OBJ
    If VARTYPE(PythonRuntime) != 'O'
@@ -447,11 +447,11 @@ PROCEDURE start_python(PythonHomeArg, PythonDllArg, PythonExecutable)
          CASE PCOUNT() == 0
             PythonRuntime = CreateObject('PythonRuntime')
          CASE PCOUNT() == 1
-            PythonRuntime = CreateObject('PythonRuntime', PythonHomeArg)
+            PythonRuntime = CreateObject('PythonRuntime', PythonHome)
          CASE PCOUNT() == 2
-            PythonRuntime = CreateObject('PythonRuntime', PythonHomeArg, PythonDllArg)
+            PythonRuntime = CreateObject('PythonRuntime', PythonHome, PythonDllArg)
          CASE PCOUNT() == 3
-            PythonRuntime = CreateObject('PythonRuntime', PythonHomeArg, PythonDllArg, PythonExecutable)
+            PythonRuntime = CreateObject('PythonRuntime', PythonHome, PythonDllArg, PythonExecutable)
          ENDCASE
       CATCH TO ERROR_OBJ
       ENDTRY
@@ -462,10 +462,8 @@ PROCEDURE start_python(PythonHomeArg, PythonDllArg, PythonExecutable)
 ENDPROC
 
 DEFINE CLASS PythonRuntime AS Custom
-   OnlyOne = .T.
-   PythonHome = .Null.
+   OnlyOne = .F.
    PythonDll = .Null.
-   PyMajorVersion = .Null.
 
    PROCEDURE CHECK_REINIT
       LOCAL Instance_Index
@@ -473,18 +471,15 @@ DEFINE CLASS PythonRuntime AS Custom
       RETURN AINSTANCE(Instance_Array, 'PythonRuntime') > 0
    ENDPROC
 
-   PROCEDURE INIT(PythonHomeArg, PythonDllArg, PythonExecutable)
+   PROCEDURE INIT(PythonHome, PythonDllArg, PythonExecutable)
       IF THIS.CHECK_REINIT()
-         This.OnlyOne = .F.
          ERROR 'Python Already Initialized'
          RETURN
       ENDIF
 
-      PUBLIC PythonHome, PythonDll, PyMajorVersion
-      IF VARTYPE(PythonHomeArg) != 'C'
+      PUBLIC PythonDll, PyMajorVersion
+      IF VARTYPE(PythonHome) != 'C'
          PythonHome = 'Python27'
-      ELSE
-         PythonHome = PythonHomeArg
       ENDIF
       IF PCOUNT() > 1
          PythonDll = PythonDllArg
@@ -502,13 +497,13 @@ DEFINE CLASS PythonRuntime AS Custom
          RETURN
       ENDIF
 
-      This.PythonHome = PythonHome
       This.PythonDll = PythonDll
-      This.PyMajorVersion = PyMajorVersion
 
       DECLARE integer Py_IsInitialized IN (PythonDll)
 
       IF Py_IsInitialized() == 0
+         LOCAL PythonHomeOriginal
+         PythonHomeOriginal = PythonHome
          PythonHome = PythonHome + CHR(0)
          IF PyMajorVersion == 3
             PythonHome = STRCONV(PythonHome, 12)
@@ -531,14 +526,14 @@ DEFINE CLASS PythonRuntime AS Custom
          IF PyMajorVersion == 3
             HomeCheck = STRCONV(HomeCheck, 10)
          ENDIF
-         HomeCheck = SUBSTR(HomeCheck, 1, LEN(HomeCheck) - 1)
-         IF HomeCheck != THIS.PythonHome
+         IF LEFT(HomeCheck, LEN(PythonHomeOriginal)) != PythonHomeOriginal
             ERROR 'Memory Error setting python home'
             RETURN
          ENDIF
 
          DECLARE Py_InitializeEx IN (PythonDll) integer
          Py_InitializeEx(0)
+         This.OnlyOne = .T.
 
          CLEAR DLLS GetProcessHeap, HeapAlloc, Py_SetPythonHome, Py_GetPythonHome, Py_Initialize
 
@@ -632,7 +627,7 @@ DEFINE CLASS PythonRuntime AS Custom
          RETURN
       ENDIF
       RELEASE PyStdOut, PyStdErr
-      RELEASE PythonHome, PythonDll, PyMajorVersion
+      RELEASE PythonDll, PyMajorVersion
 
       DECLARE integer Py_IsInitialized IN (This.PythonDll)
       DECLARE Py_DecRef IN (This.PythonDll) integer
