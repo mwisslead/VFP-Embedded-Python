@@ -324,15 +324,6 @@ DEFINE CLASS PythonTuple AS PythonObjectImpl
    ENDFUNC
 ENDDEFINE
 
-DEFINE CLASS PythonVariable AS PythonObjectImpl
-   FUNCTION INIT(varname)
-      LOCAL main_mod, pyval
-      main_mod = CREATEOBJECT('PythonModule', '__main__')
-      pyval = main_mod.GetAttrRetObj(varname)
-      this.pyobject = pyval.obj()
-   ENDFUNC
-ENDDEFINE
-
 DEFINE CLASS PythonBuiltin AS PythonObjectImpl
    FUNCTION INIT(varname)
       LOCAL pyval
