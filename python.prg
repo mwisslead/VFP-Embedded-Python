@@ -189,7 +189,7 @@ DEFINE CLASS PythonObjectImpl AS Custom
 
    PROCEDURE CallMethodRetObj(obj_method, argtuple, kwarg_dict)
       LOCAL funcobj
-      funcobj = this.GetAttr(obj_method)
+      funcobj = this.GetAttrRetObj(obj_method)
       IF VARTYPE(funcobj) != 'O'
           RETURN .F.
       ENDIF
@@ -198,7 +198,7 @@ DEFINE CLASS PythonObjectImpl AS Custom
 
    PROCEDURE CallMethod(obj_method, argtuple, kwarg_dict)
       LOCAL funcobj
-      funcobj = this.GetAttr(obj_method)
+      funcobj = this.GetAttrRetObj(obj_method)
       IF VARTYPE(funcobj) != 'O'
           RETURN .F.
       ENDIF
