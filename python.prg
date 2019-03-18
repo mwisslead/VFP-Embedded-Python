@@ -289,7 +289,11 @@ DEFINE CLASS PythonObject AS PythonObjectImpl
                DateTuple = CREATEOBJECT('PythonTuple', YEAR(foxval), MONTH(foxval), DAY(foxval))
                DateMethod = 'date'
             ENDIF
-            pyobject = PyDatetime.CallMethodRetObj(DateMethod, DateTuple, .NULL.)
+            TRY
+               pyobject = PyDatetime.CallMethodRetObj(DateMethod, DateTuple, .NULL.)
+            CATCH TO OERR
+               pyobject = PyNone
+            ENDTRY
             Py_IncRef(pyobject.obj())
             pyobject = pyobject.obj()
          CASE valtype == 'X'
